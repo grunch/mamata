@@ -81,6 +81,9 @@ export default defineConfig({
       workbox: {
         // Shell de la app precacheado: abre sin internet.
         globPatterns: ['**/*.{js,css,html,svg,png}'],
+        // El panel no se cachea: necesita internet igual y tiene que cargar siempre la
+        // última versión (una copia vieja publicaría con lógica vieja).
+        globIgnores: ['admin/**', 'assets/admin-*'],
         // El panel admin no se cachea para navegación: siempre necesita internet.
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/admin/],
