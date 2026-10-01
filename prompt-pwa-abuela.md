@@ -37,7 +37,7 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
   - Cada ítem es su propio evento reemplazable: editar = publicar una versión nueva con el mismo `d`.
   - Borrar, archivar o pausar = nueva versión con un campo de estado (papelera recuperable). Nunca se depende de que un relay borre.
 - **Vinculación**: el teléfono abre el link, genera sus claves, publica un 36010 y muestra un **código de 4 dígitos** derivado de su pubkey. El panel muestra el pedido con el mismo código; el admin lo compara y toca **Aprobar** (publica el 36011). **Quitar acceso** a un teléfono = nueva clave de contenido, volver a cifrar y publicar todo, y mandar 36011 solo a los teléfonos que quedan.
-- **Imágenes**: comprimidas en el navegador, cifradas con AES-GCM (clave derivada de la clave de contenido) y subidas a **Blossom** (`blossom.primal.net`, `blossom.band`) con una autorización kind 24242 firmada por el admin. La app las baja por SHA-256 y verifica el hash antes de descifrar.
+- **Imágenes**: comprimidas en el navegador, cifradas con AES-GCM (clave derivada de la clave de contenido) y subidas a **Blossom** (`nostr.download`, `blossom.yakihonne.com`; aceptan archivos cifrados) con una autorización kind 24242 firmada por el admin. La app las baja por SHA-256 y verifica el hash antes de descifrar.
 - **Datos del usuario** (leídos, hechos, saldos anotados): solo en su teléfono (IndexedDB). El admin no los ve.
 - **Sin notificaciones push** con la app cerrada. Con la app abierta, lo nuevo aparece en segundos (suscripción en vivo).
 

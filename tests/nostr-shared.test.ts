@@ -34,7 +34,7 @@ describe('constants', () => {
     })
     expect(ITEM_KINDS).toEqual([36000, 36001, 36002, 36003])
     expect(RELAYS).toEqual(['wss://relay.mostro.network', 'wss://relay.shadowbip.com', 'wss://nos.lol'])
-    expect(BLOSSOM_SERVERS).toEqual(['https://blossom.primal.net', 'https://blossom.band'])
+    expect(BLOSSOM_SERVERS).toEqual(['https://nostr.download', 'https://blossom.yakihonne.com'])
   })
 })
 

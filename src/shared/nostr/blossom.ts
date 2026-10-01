@@ -35,7 +35,8 @@ export function uploadAuthTemplate(hashes: string[], now: number): EventTemplate
   return {
     kind: AUTH_KIND,
     created_at: now,
-    content: 'Subir imágenes de Mamata',
+    // Solo ASCII: algunos servidores decodifican mal el UTF-8 y la firma no les cierra.
+    content: 'Subir imagenes de Mamata',
     tags: [['t', 'upload'], ['expiration', String(now + AUTH_TTL_SECONDS)], ...hashes.map((h) => ['x', h])],
   }
 }

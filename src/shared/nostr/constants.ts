@@ -20,7 +20,9 @@ export const ITEM_KINDS = [KIND.message, KIND.reminder, KIND.giftCard, KIND.prof
 // (mostro-p2p.tech se descartó: rechaza estos kinds.)
 export const RELAYS = ['wss://relay.mostro.network', 'wss://relay.shadowbip.com', 'wss://nos.lol']
 
-export const BLOSSOM_SERVERS = ['https://blossom.primal.net', 'https://blossom.band']
+// Probados el 2026-10-01: aceptan archivos cifrados (octet-stream) y responden con CORS.
+// blossom.primal.net y blossom.band se descartaron: solo aceptan imágenes reconocibles.
+export const BLOSSOM_SERVERS = ['https://nostr.download', 'https://blossom.yakihonne.com']
 
 // Con menos relays que esto, una publicación se considera fallida.
 export const MIN_RELAYS_OK = 2
