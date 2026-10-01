@@ -1,8 +1,9 @@
 import { formatNoted } from '../../shared/dates.ts'
 import type { Message, MessageStyle } from '../../shared/model.ts'
 import { markMessageRead, unreadMessages, type AppContext } from '../context.ts'
-import { asyncImage, canSpeak, speak } from '../media.ts'
+import { asyncImage } from '../media.ts'
 import { routeHref } from '../router.ts'
+import { speakButton } from '../speech.ts'
 import { bigButton, bigLink, h, screen } from '../ui.ts'
 import { notFoundScreen } from './status.ts'
 
@@ -67,7 +68,7 @@ export function messageScreen(ctx: AppContext, id: string): HTMLElement {
       isRead
         ? h('p', { class: 'done', text: '✔ Ya lo leíste' })
         : bigButton('✅', 'Entendido', () => void onUnderstood()),
-      canSpeak() && bigButton('🔊', 'Leer en voz alta', () => speak(`${message.title}. ${message.body}`), 'secondary'),
+      speakButton(`${message.title}. ${message.body}`),
       bigLink('💌', 'Ver todos los mensajes', '#/mensajes', 'quiet'),
     ]),
   ])
