@@ -7,7 +7,7 @@ import { ContentError } from '../shared/model.ts'
 import { SECTIONS, isDirty, type AdminContext, type AdminSession, type Section } from './context.ts'
 import { newId } from './draft.ts'
 import { AuthError, ConflictError, GitHubRepo } from './github.ts'
-import { imageFile, openContent, publish, rotateKey } from './publisher.ts'
+import { imageFile, openContent, publish, rotateKey, type Published } from './publisher.ts'
 import { cardsSection } from './screens/cards.ts'
 import { linkSection } from './screens/link.ts'
 import { messagesSection } from './screens/messages.ts'
@@ -30,8 +30,20 @@ function toast(message: string): void {
   }, TOAST_MS)
 }
 
+// Si el commit quedó pero GitHub no arrancó el despliegue, decir cómo arrancarlo a mano.
+function deployMessage(result: Published, ok: string): string {
+  return result.deployRequested
+    ? ok
+    : 'Se guardó, pero GitHub no arrancó la publicación. En el repo: Actions → "Publicar en GitHub Pages" → Run workflow.'
+}
+
 function explain(error: unknown): string {
-  if (error instanceof AuthError) return 'GitHub rechazó el token: revisá que no esté vencido y que tenga permiso sobre el repo.'
+  if (error instanceof AuthError && error.status === 401) {
+    return `GitHub dice que el token no es válido (${error.detail}). Revisá que se haya copiado completo: empieza con github_pat_.`
+  }
+  if (error instanceof AuthError) {
+    return `El token funciona pero no tiene permiso sobre grunch/mamata (${error.detail}). Revisá "Repository access" y "Contents: Read and write".`
+  }
   if (error instanceof DecryptError) return 'La clave no corresponde al contenido publicado.'
   if (error instanceof ContentError) return `El contenido publicado tiene un problema: ${error.message}`
   if (error instanceof ConflictError) return error.message
@@ -93,26 +105,27 @@ function renderSection(ctx: AdminContext): HTMLElement {
 async function loadImageUrl(session: AdminSession, id: string): Promise<string | null> {
   let plain = session.newImages.get(id) ?? null
   if (!plain) {
-    const sealed = await session.repo.readFile(imageFile(id), session.baseCommit)
+    const sealed = session.baseCommit ? await session.repo.readFile(imageFile(id), session.baseCommit) : null
     plain = sealed ? await decryptBytes(session.key, sealed, imageAad(id)) : null
   }
   return plain ? URL.createObjectURL(new Blob([plain], { type: sniffImageType(plain) })) : null
 }
 
 // Genera una clave nueva, vuelve a cifrar y publica una foto del contenido actual.
-async function rotateSession(session: AdminSession, now: string): Promise<Partial<AdminSession>> {
+async function rotateSession(session: AdminSession, now: string): Promise<{ patch: Partial<AdminSession>; rotation: Published }> {
   const snapshot = session.content
   const base = await session.repo.headCommit()
   const rotated = await rotateKey(session.repo, session.key, base, snapshot, session.newImages, now)
   const settings = loadSettings()
   if (settings) saveSettings({ ...settings, key: rotated.encodedKey })
-  return {
+  const patch = {
     key: await importKey(rotated.encodedKey),
     encodedKey: rotated.encodedKey,
     baseCommit: rotated.commit,
     publishedJson: JSON.stringify(snapshot),
     newImages: new Map(),
   }
+  return { patch, rotation: rotated }
 }
 
 function panelHeader(current: Section): HTMLElement {
@@ -157,19 +170,19 @@ function startPanel(initial: AdminSession): void {
     render()
     const snapshot = session.content
     const images = session.newImages
-    const send = (base: string) => publish(session.repo, session.key, base, snapshot, images, ctx.now())
+    const send = (base: string | null) => publish(session.repo, session.key, base, snapshot, images, ctx.now())
     try {
-      let commit: string
+      let result: Published
       try {
-        commit = await send(session.baseCommit)
+        result = await send(session.baseCommit)
       } catch (error) {
         const overwrite = error instanceof ConflictError && window.confirm(`${explain(error)}. ¿Publicar igual tu versión encima?`)
         if (!overwrite) throw error
-        commit = await send(await session.repo.headCommit())
+        result = await send(await session.repo.headCommit())
       }
       const pending = new Map([...session.newImages].filter(([id]) => !images.has(id)))
-      session = { ...session, baseCommit: commit, publishedJson: JSON.stringify(snapshot), newImages: pending }
-      toast('Publicado. El teléfono lo va a ver en unos minutos.')
+      session = { ...session, baseCommit: result.commit, publishedJson: JSON.stringify(snapshot), newImages: pending }
+      toast(deployMessage(result, 'Publicado. El teléfono lo va a ver en unos minutos.'))
     } catch (error) {
       toast(explain(error))
     } finally {
@@ -207,9 +220,10 @@ function startPanel(initial: AdminSession): void {
       render()
       try {
         // Se aplica sobre la sesión actual: lo editado mientras tanto no se pierde.
-        session = { ...session, ...(await rotateSession(session, ctx.now())) }
+        const { patch, rotation } = await rotateSession(session, ctx.now())
+        session = { ...session, ...patch }
         imageUrls.clear()
-        toast('Clave cambiada. Mandá el link nuevo al teléfono.')
+        toast(deployMessage(rotation, 'Clave cambiada. Mandá el link nuevo al teléfono.'))
       } catch (error) {
         toast(explain(error))
       } finally {

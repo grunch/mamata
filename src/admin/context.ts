@@ -17,7 +17,8 @@ export interface AdminSession {
   repo: GitHubRepo
   key: CryptoKey
   encodedKey: string
-  baseCommit: string
+  // null hasta la primera publicación (la rama `data` todavía no existe).
+  baseCommit: string | null
   content: Content
   // Lo último publicado, para saber si hay cambios sin publicar.
   publishedJson: string

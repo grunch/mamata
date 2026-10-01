@@ -8,9 +8,9 @@ App web (PWA) para que una persona mayor vea **mensajes, recordatorios y tarjeta
 ## Cómo funciona
 
 - Es un **sitio estático** (Vite + TypeScript, sin framework) publicado en **GitHub Pages**. No hay servidor ni base de datos.
-- Lo que carga el admin vive en este repo, **cifrado** con AES-GCM 256: `public/data/data.enc` y una imagen por archivo en `public/data/img/<id>.enc`.
+- Lo que carga el admin vive en la rama **`data`** de este repo, **cifrado** con AES-GCM 256: `data.enc` y una imagen por archivo en `img/<id>.enc`. El código vive en `main`, que está protegida: el token del panel no la puede tocar.
 - La **clave** nunca está en el repo. Viaja solo en el link de vinculación (`https://mamata.live/#k=<clave>`). La parte después del `#` no se envía al servidor.
-- El panel `/admin` descifra, deja editar, vuelve a cifrar y publica con la API de GitHub en **un solo commit**. Ese commit dispara la GitHub Action, y en uno o dos minutos el teléfono ve lo nuevo.
+- El panel `/admin` descifra, deja editar, vuelve a cifrar y publica con la API de GitHub en **un solo commit** en la rama `data`. Después le pide a GitHub Actions que despliegue (un `repository_dispatch`). El workflow arma el sitio con el código de `main` y copia de `data` **solo** los archivos `.enc`. En uno o dos minutos el teléfono ve lo nuevo.
 - Lo que hace el usuario ("Entendido", "Ya lo hice", los saldos que anota) queda **solo en su teléfono**, en IndexedDB.
 
 ### Lo que no hace, a propósito
@@ -68,23 +68,36 @@ Después, en GitHub:
 
 > El archivo `public/CNAME` ya tiene `mamata.live`. Con despliegue por Actions, el dominio que vale es el que configurás en **Settings → Pages**.
 
-### 4. Crear el token de GitHub para el panel
+### 4. Proteger `main` (para que el token del panel no pueda cambiar el código)
+
+Si alguien te robara el token del panel, podría intentar subir código malicioso que se despliegue y le saque la clave a los teléfonos. Para evitarlo, `main` solo se cambia con pull requests, y el token no tiene permiso sobre pull requests.
+
+1. **Settings → Rules → Rulesets → New ruleset → New branch ruleset**.
+2. **Name:** `proteger-main`. **Enforcement:** *Active*. **Bypass list:** vacía (ni siquiera vos: si no, el token también podría saltarla).
+3. **Target branches:** *Include default branch*.
+4. Marcá **Restrict deletions**, **Block force pushes** y **Require a pull request before merging** (0 aprobaciones alcanza).
+5. Desde ahora, los cambios de código se suben en una rama y se mergean con un PR desde la web de GitHub.
+
+Además, en **Settings → Environments → github-pages → Deployment branches and tags**, dejá solo `main`.
+
+### 5. Crear el token de GitHub para el panel
 
 1. Entrá a <https://github.com/settings/personal-access-tokens/new> (*fine-grained token*).
 2. **Token name:** `mamata-panel`. **Expiration:** la que prefieras (máximo un año). Agendá cuándo vence.
 3. **Repository access:** *Only select repositories* → `grunch/mamata`.
-4. **Permissions → Repository permissions → Contents:** *Read and write*. Nada más.
+4. **Permissions → Repository permissions → Contents:** *Read and write*. **Nada más**: sin *Workflows*, sin *Pull requests*, sin *Administration*. Así el token solo puede escribir en ramas sin protección (la de datos) y no puede crear workflows.
 5. Generalo y copialo. Va a ir solo al panel, en tu navegador.
 
-### 5. Primer uso del panel
+### 6. Primer uso del panel
 
 1. Abrí <https://mamata.live/admin/>.
 2. Pegá el token.
 3. Tocá **"Es la primera vez: generar una clave nueva"** y **guardá esa clave** en tu gestor de contraseñas.
 4. Completá el nombre de quien usa la app y el tuyo. Tocá **Entrar**.
-5. Cargá mensajes, recordatorios y tarjetas, y tocá **Publicar cambios**.
+5. Cargá mensajes, recordatorios y tarjetas, y tocá **Publicar cambios**. La primera vez se crea la rama `data`.
+6. Si el panel avisa que GitHub no arrancó la publicación, en el repo andá a **Actions → Publicar en GitHub Pages → Run workflow**.
 
-### 6. Vincular el teléfono
+### 7. Vincular el teléfono
 
 1. En el panel, entrá a **📱 Vincular teléfono**.
 2. En el teléfono, abrí **Chrome** y escaneá el QR, o abrí el link.
@@ -126,7 +139,7 @@ src/shared/           cifrado, modelo y validación, fechas, saldos, proveedores
 src/app/              app del usuario (pantallas, almacenamiento local, contenido)
 src/admin/            panel (borrador, GitHub, publicar, pantallas)
 src/styles/           estilos (letra grande, contraste alto)
-public/data/          contenido cifrado publicado (lo escribe el panel)
+public/data/          (ignorado por git) el workflow copia acá el contenido de la rama `data`
 scripts/              seed de ejemplo e íconos
 tests/  e2e/          tests unitarios y de punta a punta
 docs/checklists.md    accesibilidad y pruebas manuales en Android
