@@ -60,7 +60,11 @@ export async function decryptContent(key: CryptoKey, sealed: Bytes): Promise<Con
   }
 }
 
-export async function loadContent(key: CryptoKey, fetchFn: Fetch = (u) => fetch(u)): Promise<LoadedContent> {
+// GitHub Pages sirve con max-age=600: sin esto el navegador podría mostrar una copia de
+// hasta 10 minutos. Con no-cache pregunta si cambió (si no cambió, la respuesta es mínima).
+const fetchFresh: Fetch = (u) => fetch(u, { cache: 'no-cache' })
+
+export async function loadContent(key: CryptoKey, fetchFn: Fetch = fetchFresh): Promise<LoadedContent> {
   const sealed = await fetchBytes(DATA_PATH, fetchFn)
   return { content: await decryptContent(key, sealed), sealed }
 }

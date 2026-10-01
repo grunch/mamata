@@ -39,6 +39,18 @@ test.describe('app del usuario', () => {
     await expect(page.getByText('Tenés 2 mensajes nuevos')).toBeVisible()
   })
 
+  test('si todavía no hay nada publicado, aparece solo cuando se publica', async ({ page }) => {
+    await page.route('**/data/data.enc', (route) => route.fulfill({ status: 404, body: 'no' }))
+    await page.goto(`/#k=${E2E_KEY}`)
+    await expect(page.getByText('Todavía no hay nada para mostrar')).toBeVisible()
+
+    // Se publica: el archivo ya existe. La app reintenta al volver a primer plano, sin recargar.
+    await page.unroute('**/data/data.enc')
+    await comeBack(page)
+
+    await expect(page.getByRole('button', { name: 'Empezar' })).toBeVisible()
+  })
+
   test('marca un mensaje como leído', async ({ page }) => {
     await page.goto(`/#k=${E2E_KEY}`)
     await page.getByRole('button', { name: 'Empezar' }).click()

@@ -22,7 +22,11 @@ import {
 } from './screens/status.ts'
 import { announce, replaceScreen } from './ui.ts'
 
-const REFRESH_MS = 5 * 60 * 1000
+// Cada cuánto se revisa si hay contenido nuevo (además de al volver a la app).
+// Es barato: si no cambió, GitHub Pages contesta "sin cambios".
+const REFRESH_MS = 60 * 1000
+// Mientras no hay nada que mostrar (sin publicar o sin internet), se reintenta seguido.
+const RETRY_MS = 30 * 1000
 
 type Loaded = { content: Content; outdatedKey: boolean } | { failure: LoadFailure }
 
@@ -159,6 +163,19 @@ function listenForChanges(ctx: AppContext, render: (moveFocus: boolean) => void,
   setInterval(() => void refresh(), REFRESH_MS)
 }
 
+// Sin contenido todavía: volver a intentar solo, al volver a la app o cada tanto,
+// para que lo recién publicado aparezca sin tener que recargar.
+function retryLater(root: HTMLElement): void {
+  const retry = () => {
+    if (document.visibilityState !== 'visible') return
+    document.removeEventListener('visibilitychange', retry)
+    clearInterval(timer)
+    void boot(root).catch(() => replaceScreen(root, [offlineFirstScreen(() => location.reload())], true))
+  }
+  const timer = setInterval(retry, RETRY_MS)
+  document.addEventListener('visibilitychange', retry)
+}
+
 async function boot(root: HTMLElement): Promise<void> {
   const store = await LocalStore.open()
   await adoptKeyFromLink(store)
@@ -167,8 +184,10 @@ async function boot(root: HTMLElement): Promise<void> {
 
   const loaded = await loadWithFallback(key, store)
   if ('failure' in loaded) {
-    if (loaded.failure === 'offline') return replaceScreen(root, [offlineFirstScreen(() => location.reload())], true)
-    return replaceScreen(root, [loaded.failure === 'empty' ? emptyScreen() : noLinkScreen()], true)
+    store.close()
+    if (loaded.failure === 'offline') replaceScreen(root, [offlineFirstScreen(() => location.reload())], true)
+    else replaceScreen(root, [loaded.failure === 'empty' ? emptyScreen() : noLinkScreen()], true)
+    return retryLater(root)
   }
 
   const [reads, done, notes] = await Promise.all([store.readMessageIds(), store.doneOccurrences(), store.balanceNotes()])

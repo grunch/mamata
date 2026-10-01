@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ContentLoadError, keyFromHash, loadContent, loadImageBytes } from '../src/app/content.ts'
 import { DATA_AAD, encryptBytes, encryptJson, generateKey, imageAad, importKey } from '../src/shared/crypto.ts'
 import { sampleContent } from './fixtures.ts'
@@ -28,6 +28,18 @@ describe('keyFromHash', () => {
 })
 
 describe('loadContent', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('asks the browser to revalidate instead of using a stale copy', async () => {
+    const key = await importKey(await generateKey())
+    const fetchSpy = vi.fn(async () => new Response('no', { status: 404 }))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await loadContent(key).catch(() => undefined)
+
+    expect(fetchSpy).toHaveBeenCalledWith('data/data.enc', { cache: 'no-cache' })
+  })
+
   it('downloads, decrypts and validates the content', async () => {
     const key = await importKey(await generateKey())
     const sealed = await encryptJson(key, sampleContent(), DATA_AAD)
