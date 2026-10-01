@@ -1,4 +1,6 @@
 // Entrar al panel: pegando la nsec del admin o con una extensión de Nostr (NIP-07).
+import { nsecEncode } from 'nostr-tools/nip19'
+import { generateSecretKey } from 'nostr-tools/pure'
 import { h } from '../../app/ui.ts'
 import type { Profile } from '../../shared/nostr/events.ts'
 import { parseSecretKey } from '../../shared/nostr/signer.ts'
@@ -18,6 +20,27 @@ export function setupScreen(onSubmit: (result: SetupResult) => Promise<string | 
   const adminName = textInput('', { autocomplete: 'off' })
   const error = formError()
   if (initialError) showError(error, initialError)
+
+  // Clave nueva para Mamata: se muestra una sola vez para guardarla.
+  const newKeyBox = h('div', { class: 'new-key warning', attrs: { hidden: '' } })
+  const generate = () => {
+    const value = nsecEncode(generateSecretKey())
+    nsec.value = value
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(value)
+        showError(error, 'Clave copiada. Pegala en tu gestor de contraseñas antes de seguir.')
+      } catch {
+        showError(error, 'No pude copiarla: seleccioná el texto y copialo a mano.')
+      }
+    }
+    newKeyBox.replaceChildren(
+      h('p', { text: 'Esta es tu clave nueva. Guardala ya en tu gestor de contraseñas: si la perdés, no vas a poder editar lo publicado.' }),
+      h('p', { class: 'key-text', text: value }),
+      h('button', { class: 'small-button secondary', text: 'Copiar clave', attrs: { type: 'button' }, on: { click: () => void copy() } }),
+    )
+    newKeyBox.hidden = false
+  }
 
   const names = (): Profile => ({
     userName: userName.value.trim() || 'Marta',
@@ -42,6 +65,13 @@ export function setupScreen(onSubmit: (result: SetupResult) => Promise<string | 
     h('p', { text: 'Para publicar hace falta firmar con tu clave de Nostr.' }),
     h('form', { class: 'admin-form', on: { submit: submitNsec } }, [
       field('Clave privada (nsec)', nsec, 'Se guarda solo en este navegador. Más seguro: usar una extensión (abajo).'),
+      h('button', {
+        class: 'small-button secondary',
+        text: 'Generar una clave nueva',
+        attrs: { type: 'button' },
+        on: { click: generate },
+      }),
+      newKeyBox,
       h('button', { class: 'small-button primary', text: 'Entrar con la nsec', attrs: { type: 'submit' } }),
       h('p', { class: 'hint', text: 'O, si tenés una extensión como nos2x:' }),
       h('button', {

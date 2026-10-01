@@ -348,6 +348,29 @@ describe('setup screen', () => {
     expect(text(el.querySelector('.error')!)).toContain('No pude conectar')
   })
 
+  it('generates a new nsec, shows it once to save it and enters with it', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const onSubmit = vi.fn(async () => null)
+    const el = mount(setupScreen(onSubmit))
+
+    button(el, 'Generar una clave nueva').click()
+
+    const nsec = input(el, 'Clave privada').value
+    expect(nsec).toMatch(/^nsec1[02-9ac-hj-np-z]{58}$/)
+    const shown = el.querySelector('.new-key')!
+    expect(text(shown)).toContain(nsec)
+    expect(text(shown)).toContain('gestor de contraseñas')
+
+    button(shown, 'Copiar clave').click()
+    await flush()
+    expect(writeText).toHaveBeenCalledWith(nsec)
+
+    el.querySelector('form')!.requestSubmit()
+    await flush()
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ setting: { mode: 'nsec', nsec } }))
+  })
+
   it('can use a browser extension instead', async () => {
     const onSubmit = vi.fn(async () => null)
     const el = mount(setupScreen(onSubmit, 'Mensaje inicial'))
