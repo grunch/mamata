@@ -1,57 +1,54 @@
-// Primera vez en este navegador: token de GitHub + clave (o generar una nueva).
+// Entrar al panel: pegando la nsec del admin o con una extensión de Nostr (NIP-07).
 import { h } from '../../app/ui.ts'
-import { generateKey } from '../../shared/crypto.ts'
+import type { Profile } from '../../shared/nostr/events.ts'
+import { parseSecretKey } from '../../shared/nostr/signer.ts'
 import { field, formError, showError, textInput } from '../forms.ts'
-import { parseKeyInput, type AdminSettings } from '../settings.ts'
+import type { SignerSetting } from '../settings.ts'
 
-const TOKEN_HELP_URL = 'https://github.com/settings/personal-access-tokens/new'
-
-export interface SetupResult extends AdminSettings {
-  userName: string
-  adminName: string
+export interface SetupResult {
+  setting: SignerSetting
+  // Solo se usan si todavía no hay nada publicado.
+  names: Profile
 }
 
 export function setupScreen(onSubmit: (result: SetupResult) => Promise<string | null>, initialError?: string): HTMLElement {
-  // new-password: que el gestor de contraseñas del navegador no lo autocomplete en otro lado.
-  const token = textInput('', { type: 'password', autocomplete: 'new-password', spellcheck: 'false' })
-  const key = textInput('', { spellcheck: 'false' })
+  // new-password: que el gestor de contraseñas del navegador no la ofrezca en otros sitios.
+  const nsec = textInput('', { type: 'password', autocomplete: 'new-password', spellcheck: 'false' })
   const userName = textInput('', { autocomplete: 'off' })
   const adminName = textInput('', { autocomplete: 'off' })
   const error = formError()
   if (initialError) showError(error, initialError)
 
-  const onGenerate = async () => {
-    key.value = await generateKey()
-    showError(error, 'Clave nueva generada. Usala solo si todavía no publicaste nada.')
+  const names = (): Profile => ({
+    userName: userName.value.trim() || 'Marta',
+    adminName: adminName.value.trim() || 'tu familiar',
+  })
+
+  const enter = async (setting: SignerSetting) => {
+    error.hidden = true
+    const problem = await onSubmit({ setting, names: names() })
+    if (problem) showError(error, problem)
   }
 
-  const submit = async (event: Event) => {
+  const submitNsec = (event: Event) => {
     event.preventDefault()
-    error.hidden = true
-    const parsedKey = parseKeyInput(key.value)
-    if (!token.value.trim()) return showError(error, 'Falta el token de GitHub.')
-    if (!parsedKey) return showError(error, 'La clave no es válida. Pegá el link de vinculación o la clave.')
-    const problem = await onSubmit({
-      token: token.value.trim(),
-      key: parsedKey,
-      userName: userName.value.trim() || 'Marta',
-      adminName: adminName.value.trim() || 'tu familiar',
-    })
-    if (problem) showError(error, problem)
+    const value = nsec.value.trim()
+    if (!parseSecretKey(value)) return showError(error, 'Eso no parece una clave privada de Nostr (empieza con nsec1).')
+    void enter({ mode: 'nsec', nsec: value })
   }
 
   return h('main', { class: 'admin-screen' }, [
     h('h1', { text: 'Panel de Mamata' }),
-    h('p', { text: 'Esto se guarda solo en este navegador.' }),
-    h('form', { class: 'admin-form', on: { submit: (e) => void submit(e) } }, [
-      field('Token de GitHub', token, 'Token de alcance fino, con permiso "Contents: Read and write" solo sobre grunch/mamata.'),
-      h('a', { text: 'Crear un token en GitHub ↗', attrs: { href: TOKEN_HELP_URL, target: '_blank', rel: 'noopener noreferrer' } }),
-      field('Clave', key, 'Pegá el link de vinculación (https://mamata.live/#k=…) o la clave sola.'),
+    h('p', { text: 'Para publicar hace falta firmar con tu clave de Nostr.' }),
+    h('form', { class: 'admin-form', on: { submit: submitNsec } }, [
+      field('Clave privada (nsec)', nsec, 'Se guarda solo en este navegador. Más seguro: usar una extensión (abajo).'),
+      h('button', { class: 'small-button primary', text: 'Entrar con la nsec', attrs: { type: 'submit' } }),
+      h('p', { class: 'hint', text: 'O, si tenés una extensión como nos2x:' }),
       h('button', {
         class: 'small-button secondary',
-        text: 'Es la primera vez: generar una clave nueva',
+        text: 'Usar extensión de Nostr',
         attrs: { type: 'button' },
-        on: { click: () => void onGenerate() },
+        on: { click: () => void enter({ mode: 'nip07' }) },
       }),
       h('fieldset', {}, [
         h('legend', { text: 'Solo si todavía no hay nada publicado' }),
@@ -59,7 +56,6 @@ export function setupScreen(onSubmit: (result: SetupResult) => Promise<string | 
         field('Tu nombre (así te nombra la app)', adminName),
       ]),
       error,
-      h('button', { class: 'small-button primary', text: 'Entrar', attrs: { type: 'submit' } }),
     ]),
   ])
 }

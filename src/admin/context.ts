@@ -1,7 +1,7 @@
-// Estado del panel admin: el borrador que se está editando y cómo publicarlo.
+// Estado del panel admin y lo que las pantallas pueden hacer con él.
 import type { Bytes } from '../shared/crypto.ts'
 import type { Content } from '../shared/model.ts'
-import type { GitHubRepo } from './github.ts'
+import type { Device } from './devices.ts'
 
 export type Section = 'mensajes' | 'recordatorios' | 'tarjetas' | 'vincular' | 'papelera'
 
@@ -14,30 +14,26 @@ export const SECTIONS: { id: Section; icon: string; label: string }[] = [
 ]
 
 export interface AdminSession {
-  repo: GitHubRepo
-  key: CryptoKey
-  encodedKey: string
-  // null hasta la primera publicación (la rama `data` todavía no existe).
-  baseCommit: string | null
+  adminPubkey: string
   content: Content
-  // Lo último publicado, para saber si hay cambios sin publicar.
-  publishedJson: string
-  // Imágenes nuevas (sin cifrar) que se suben al publicar.
-  newImages: Map<string, Bytes>
+  devices: Device[]
+  publishing: boolean
+  // Cambios que no llegaron a suficientes relays (se pueden reintentar).
+  unpublished: number
 }
 
 export interface AdminContext {
   readonly session: AdminSession
   now(): string
+  // Cada cambio se publica enseguida: solo los ítems que cambiaron.
   edit(next: Content): void
   addImage(bytes: Bytes): string
   imageUrl(id: string): Promise<string | null>
   toast(message: string): void
   rerender(): void
-  rotate(): Promise<void>
+  approve(devicePubkey: string): Promise<void>
+  revoke(devicePubkey: string): Promise<void>
+  refreshDevices(): Promise<void>
+  retry(): Promise<void>
   logout(): void
-}
-
-export function isDirty(session: AdminSession): boolean {
-  return JSON.stringify(session.content) !== session.publishedJson
 }

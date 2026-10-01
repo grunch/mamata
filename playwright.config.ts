@@ -1,9 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Clave de prueba fija: solo cifra los datos de ejemplo del seed.
-export const E2E_KEY = 'qC8FpiQqZ7ZqHBEfxk4sd5eZUkVjutzu078hOO6I2_Y'
 const PORT = 5174
 
+// Los relays se simulan dentro de cada test (e2e/fake-relay.ts): nada sale a internet.
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: false,
@@ -14,8 +13,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: `node scripts/seed.ts && npx vite --port ${PORT} --strictPort`,
-    env: { MAMATA_SEED_KEY: E2E_KEY },
+    command: `npx vite --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,
   },

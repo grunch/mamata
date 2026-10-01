@@ -1,8 +1,13 @@
 import '../styles/app.css'
-import { InvalidKeyError, importKey } from '../shared/crypto.ts'
-import type { Content } from '../shared/model.ts'
+import { decryptBytes, imageAad } from '../shared/crypto.ts'
+import { emptyContent } from '../shared/model.ts'
+import { downloadBlob } from '../shared/nostr/blossom.ts'
+import { BLOSSOM_SERVERS } from '../shared/nostr/constants.ts'
+import { deriveImageKey } from '../shared/nostr/content-key.ts'
+import { adminFromHash } from '../shared/nostr/pairing.ts'
+import { Relays } from '../shared/nostr/relays.ts'
 import { takePendingBalance } from './balance-return.ts'
-import { ContentLoadError, decryptContent, keyFromHash, loadContent, loadImageBytes, type LoadFailure } from './content.ts'
+import { ContentSync, type SyncState } from './content-sync.ts'
 import type { AppContext, AppState } from './context.ts'
 import { LocalStore } from './local-store.ts'
 import { sniffImageType } from './media.ts'
@@ -12,47 +17,18 @@ import { cardScreen, cardsScreen, historyScreen } from './screens/giftcards.ts'
 import { homeScreen } from './screens/home.ts'
 import { messageScreen, messagesScreen } from './screens/messages.ts'
 import { remindersScreen } from './screens/reminders.ts'
+import { settingsScreen } from './screens/settings.ts'
 import {
   banners,
-  emptyScreen,
   noLinkScreen,
   offlineFirstScreen,
+  waitingScreen,
   welcomeScreen,
   type InstallPrompt,
 } from './screens/status.ts'
 import { announce, replaceScreen } from './ui.ts'
 
-// Cada cuánto se revisa si hay contenido nuevo (además de al volver a la app).
-// Es barato: si no cambió, GitHub Pages contesta "sin cambios".
-const REFRESH_MS = 60 * 1000
-// Mientras no hay nada que mostrar (sin publicar o sin internet), se reintenta seguido.
-const RETRY_MS = 30 * 1000
-
-type Loaded = { content: Content; outdatedKey: boolean } | { failure: LoadFailure }
-
-// Trae lo publicado; si no se puede, usa la última versión buena guardada en el teléfono.
-async function loadWithFallback(key: CryptoKey, store: LocalStore): Promise<Loaded> {
-  try {
-    const { content, sealed } = await loadContent(key)
-    // Guardar la copia es una red de seguridad: si falla (por ejemplo, sin espacio),
-    // igual se muestra lo que se acaba de descargar.
-    await store.setLastGoodContent(sealed).catch(() => undefined)
-    return { content, outdatedKey: false }
-  } catch (error) {
-    if (!(error instanceof ContentLoadError)) throw error
-    const lastGood = await store.getLastGoodContent()
-    if (lastGood) {
-      try {
-        return { content: await decryptContent(key, lastGood), outdatedKey: error.reason === 'wrong-key' }
-      } catch {
-        // La copia guardada tampoco sirve: se informa el problema original.
-      }
-    }
-    return { failure: error.reason }
-  }
-}
-
-function screenFor(route: Route, ctx: AppContext): HTMLElement {
+function screenFor(route: Route, ctx: AppContext, phoneSecret: Uint8Array): HTMLElement {
   switch (route.name) {
     case 'home':
       return homeScreen(ctx)
@@ -72,62 +48,62 @@ function screenFor(route: Route, ctx: AppContext): HTMLElement {
       return noteScreen(ctx, route.id)
     case 'card-history':
       return historyScreen(ctx, route.id)
+    case 'settings':
+      return settingsScreen(phoneSecret)
   }
 }
 
-
-// Guarda la clave que viene en el link y la saca de la barra de direcciones.
-async function adoptKeyFromLink(store: LocalStore): Promise<void> {
-  const fromLink = keyFromHash(location.hash)
-  if (!fromLink) return
-  // Primero sacarla de la barra de direcciones, pase lo que pase después.
+// Guarda de quién aceptar contenido (la npub del link) y la saca de la barra de direcciones.
+// Un teléfono ya vinculado ignora links de otro admin: si no, cualquiera podría mandarle
+// un link y pasar a publicarle mensajes. Para cambiar de admin hay que borrar los datos de la app.
+async function adoptAdminFromLink(store: LocalStore): Promise<void> {
+  const linked = adminFromHash(location.hash)
+  if (!linked) return
   history.replaceState(null, '', `${location.pathname}#/`)
-  try {
-    await importKey(fromLink)
-    await store.setKey(fromLink)
-  } catch (error) {
-    if (!(error instanceof InvalidKeyError)) throw error
-  }
+  const current = await store.getAdminPubkey()
+  if (current && current !== linked) return
+  await store.setAdminPubkey(linked)
 }
 
-async function readKey(store: LocalStore): Promise<CryptoKey | null> {
-  const encoded = await store.getKey()
-  if (!encoded) return null
-  try {
-    return await importKey(encoded)
-  } catch {
-    return null
-  }
-}
-
-let installPrompt: InstallPrompt | null = null
-window.addEventListener('beforeinstallprompt', (event) => {
-  event.preventDefault()
-  installPrompt = event as unknown as InstallPrompt
-})
-
-// Imágenes descifradas como blob: URL, una sola vez por id.
-function imageLoader(key: CryptoKey) {
+// Imágenes: se bajan de Blossom por hash, se descifran y se muestran como blob: URL.
+function imageLoader() {
   const cache = new Map<string, Promise<string | null>>()
+  let images = new Map<string, string>()
+  let imageKey: Promise<CryptoKey> | null = null
+  let currentKey: Uint8Array | null = null
   return {
+    update(nextImages: Map<string, string>, contentKey: Uint8Array) {
+      images = nextImages
+      if (currentKey && currentKey.every((b, i) => b === contentKey[i])) return
+      currentKey = contentKey
+      imageKey = deriveImageKey(contentKey)
+      cache.clear()
+    },
     get(id: string): Promise<string | null> {
-      const cached = cache.get(id)
+      const sha256 = images.get(id)
+      if (!sha256 || !imageKey) return Promise.resolve(null)
+      const cached = cache.get(sha256)
       if (cached) return cached
-      const pending = loadImageBytes(key, id)
+      const key = imageKey
+      const pending = downloadBlob(sha256, BLOSSOM_SERVERS)
+        .then(async (sealed) => decryptBytes(await key, sealed, imageAad(id)))
         .then((bytes) => URL.createObjectURL(new Blob([bytes], { type: sniffImageType(bytes) })))
         .catch(() => null)
-      cache.set(id, pending)
+      cache.set(sha256, pending)
       return pending
     },
-    clear: () => cache.clear(),
   }
 }
 
-function createContext(root: HTMLElement, store: LocalStore, initial: AppState, imageUrl: (id: string) => Promise<string | null>) {
+function createContext(
+  root: HTMLElement,
+  store: LocalStore,
+  initial: AppState,
+  imageUrl: (id: string) => Promise<string | null>,
+  view: (ctx: AppContext) => HTMLElement[],
+) {
   let state = initial
-  const render = (moveFocus: boolean) => {
-    replaceScreen(root, [...banners(state), screenFor(parseRoute(location.hash), ctx)], moveFocus)
-  }
+  const render = (moveFocus: boolean) => replaceScreen(root, view(ctx), moveFocus)
   const ctx: AppContext = {
     get state() {
       return state
@@ -149,65 +125,66 @@ function createContext(root: HTMLElement, store: LocalStore, initial: AppState, 
   return { ctx, render }
 }
 
-// Navegación, conexión, vuelta desde "Ver saldo" y refresco periódico del contenido.
-function listenForChanges(ctx: AppContext, render: (moveFocus: boolean) => void, refresh: () => Promise<void>): void {
-  window.addEventListener('hashchange', () => render(true))
-  window.addEventListener('online', () => ctx.update({ offline: false }))
-  window.addEventListener('offline', () => ctx.update({ offline: true }))
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return
-    const pendingCard = takePendingBalance()
-    if (pendingCard) ctx.go({ name: 'card-note', id: pendingCard })
-    void refresh()
-  })
-  setInterval(() => void refresh(), REFRESH_MS)
-}
+let installPrompt: InstallPrompt | null = null
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault()
+  installPrompt = event as unknown as InstallPrompt
+})
 
-// Sin contenido todavía: volver a intentar solo, al volver a la app o cada tanto,
-// para que lo recién publicado aparezca sin tener que recargar.
-function retryLater(root: HTMLElement): void {
-  const retry = () => {
-    if (document.visibilityState !== 'visible') return
-    document.removeEventListener('visibilitychange', retry)
-    clearInterval(timer)
-    void boot(root).catch(() => replaceScreen(root, [offlineFirstScreen(() => location.reload())], true))
-  }
-  const timer = setInterval(retry, RETRY_MS)
-  document.addEventListener('visibilitychange', retry)
-}
+type Phase = { kind: 'loading' } | { kind: 'waiting'; code: string } | { kind: 'ready' }
 
 async function boot(root: HTMLElement): Promise<void> {
   const store = await LocalStore.open()
-  await adoptKeyFromLink(store)
-  const key = await readKey(store)
-  if (!key) return replaceScreen(root, [noLinkScreen()], true)
+  await adoptAdminFromLink(store)
+  const admin = await store.getAdminPubkey()
+  if (!admin) return replaceScreen(root, [noLinkScreen()], true)
 
-  const loaded = await loadWithFallback(key, store)
-  if ('failure' in loaded) {
-    store.close()
-    if (loaded.failure === 'offline') replaceScreen(root, [offlineFirstScreen(() => location.reload())], true)
-    else replaceScreen(root, [loaded.failure === 'empty' ? emptyScreen() : noLinkScreen()], true)
-    return retryLater(root)
-  }
-
+  const phoneSecret = await store.phoneSecret()
   const [reads, done, notes] = await Promise.all([store.readMessageIds(), store.doneOccurrences(), store.balanceNotes()])
-  const images = imageLoader(key)
-  const initial: AppState = { ...loaded, reads, done, notes, offline: !navigator.onLine }
-  const { ctx, render } = createContext(root, store, initial, images.get)
+  let onboarded = await store.getPref('onboarded')
+  let phase: Phase = { kind: 'loading' }
+  const images = imageLoader()
 
-  const refresh = async () => {
-    const next = await loadWithFallback(key, store).catch(() => null)
-    if (!next || 'failure' in next) return
-    if (next.content.updatedAt === ctx.state.content.updatedAt && next.outdatedKey === ctx.state.outdatedKey) return
-    images.clear()
-    ctx.update(next)
+  // Si no se pudo guardar, la bienvenida vuelve a aparecer la próxima vez; no traba.
+  const start = () => {
+    onboarded = true
+    void store.setPref('onboarded', true).catch(() => undefined)
+    render(true)
   }
-  listenForChanges(ctx, render, refresh)
+  const view = (ctx: AppContext): HTMLElement[] => {
+    if (phase.kind === 'waiting') return [waitingScreen(phase.code)]
+    if (!onboarded) return [welcomeScreen(ctx.state, installPrompt, start)]
+    return [...banners(ctx.state), screenFor(parseRoute(location.hash), ctx, phoneSecret)]
+  }
+  const initial: AppState = { content: emptyContent('', 'tu familiar'), reads, done, notes, offline: !navigator.onLine }
+  const { ctx, render } = createContext(root, store, initial, images.get, view)
 
-  if (await store.getPref('onboarded')) return render(true)
-  // Si no se pudo guardar, se vuelve a mostrar la bienvenida la próxima vez; no traba.
-  const start = () => void store.setPref('onboarded', true).catch(() => undefined).then(() => render(true))
-  replaceScreen(root, [welcomeScreen(ctx.state, installPrompt, start)], true)
+  const onChange = (next: SyncState) => {
+    const wasReady = phase.kind === 'ready'
+    if (next.status === 'waiting') {
+      // El foco se mueve solo al entrar a la espera, no con cada evento que llega.
+      const alreadyWaiting = phase.kind === 'waiting' && phase.code === next.code
+      phase = { kind: 'waiting', code: next.code }
+      return render(!alreadyWaiting)
+    }
+    images.update(next.images, next.contentKey)
+    phase = { kind: 'ready' }
+    ctx.update({ content: next.content })
+    if (!wasReady) render(true)
+  }
+  const sync = new ContentSync({ relays: new Relays(), cache: store, admin, phoneSecret, onChange })
+
+  window.addEventListener('hashchange', () => render(true))
+  window.addEventListener('online', () => ctx.update({ offline: false }))
+  window.addEventListener('offline', () => ctx.update({ offline: true }))
+  // En segundo plano se cierra la suscripción (batería); al volver se reabre y se pone al día.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return sync.stop()
+    const pendingCard = takePendingBalance()
+    if (pendingCard) ctx.go({ name: 'card-note', id: pendingCard })
+    void sync.start()
+  })
+  await sync.start()
 }
 
 const root = document.getElementById('app')

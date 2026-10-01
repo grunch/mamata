@@ -1,46 +1,27 @@
-// Token de GitHub y clave del contenido, guardados solo en el navegador del admin.
-// Nunca se mandan a otro lado que no sea la API de GitHub (el token) y nunca al repo.
+// Cómo firma el panel en este navegador: la nsec pegada (guardada acá) o una extensión
+// NIP-07. Nada de esto sale del navegador.
 
-export const SITE_URL = 'https://mamata.live/'
-// El panel solo escribe en la rama `data`; `main` (el código) está protegida.
-export const REPO = { owner: 'grunch', repo: 'mamata', branch: 'data' } as const
+export type SignerSetting = { mode: 'nsec'; nsec: string } | { mode: 'nip07' }
 
-const STORAGE_KEY = 'mamata:admin'
-const KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/
+const STORAGE_KEY = 'mamata:admin:firmante'
 
-export interface AdminSettings {
-  token: string
-  key: string
-}
-
-// Acepta la clave sola o el link de vinculación completo.
-export function parseKeyInput(input: string): string | null {
-  const trimmed = input.trim()
-  const fromLink = /#k=([A-Za-z0-9_-]+)$/.exec(trimmed)?.[1]
-  const candidate = fromLink ?? trimmed
-  return KEY_PATTERN.test(candidate) ? candidate : null
-}
-
-export function linkFor(key: string): string {
-  return `${SITE_URL}#k=${key}`
-}
-
-export function loadSettings(): AdminSettings | null {
+export function loadSignerSetting(): SignerSetting | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    const value = JSON.parse(raw) as Partial<AdminSettings>
-    if (typeof value.token !== 'string' || typeof value.key !== 'string') return null
-    return { token: value.token, key: value.key }
+    const value = JSON.parse(raw) as Partial<{ mode: string; nsec: unknown }>
+    if (value.mode === 'nip07') return { mode: 'nip07' }
+    if (value.mode === 'nsec' && typeof value.nsec === 'string') return { mode: 'nsec', nsec: value.nsec }
+    return null
   } catch {
     return null
   }
 }
 
-export function saveSettings(settings: AdminSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+export function saveSignerSetting(setting: SignerSetting): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(setting))
 }
 
-export function clearSettings(): void {
+export function clearSignerSetting(): void {
   localStorage.removeItem(STORAGE_KEY)
 }

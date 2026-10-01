@@ -1,59 +1,39 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest'
-import { SITE_URL, clearSettings, linkFor, loadSettings, parseKeyInput, saveSettings } from '../src/admin/settings.ts'
+import { clearSignerSetting, loadSignerSetting, saveSignerSetting } from '../src/admin/settings.ts'
 
-const KEY = 'qC8FpiQqZ7ZqHBEfxk4sd5eZUkVjutzu078hOO6I2_Y'
-
-describe('parseKeyInput', () => {
-  it('accepts a bare key', () => {
-    expect(parseKeyInput(KEY)).toBe(KEY)
-  })
-
-  it('accepts the full link', () => {
-    expect(parseKeyInput(`https://mamata.live/#k=${KEY}`)).toBe(KEY)
-  })
-
-  it('ignores surrounding spaces', () => {
-    expect(parseKeyInput(`  ${KEY}\n`)).toBe(KEY)
-  })
-
-  it('rejects anything else', () => {
-    expect(parseKeyInput('hola')).toBeNull()
-    expect(parseKeyInput('https://mamata.live/')).toBeNull()
-  })
-})
-
-describe('linkFor', () => {
-  it('builds the pairing link on the real domain', () => {
-    expect(SITE_URL).toBe('https://mamata.live/')
-    expect(linkFor(KEY)).toBe(`https://mamata.live/#k=${KEY}`)
-  })
-})
-
-describe('settings storage', () => {
+describe('signer setting', () => {
   beforeEach(() => localStorage.clear())
 
   it('returns null when nothing was saved', () => {
-    expect(loadSettings()).toBeNull()
+    expect(loadSignerSetting()).toBeNull()
   })
 
-  it('round-trips token and key', () => {
-    saveSettings({ token: 'tkn', key: KEY })
+  it('round-trips the nsec mode', () => {
+    saveSignerSetting({ mode: 'nsec', nsec: 'nsec1abc' })
 
-    expect(loadSettings()).toEqual({ token: 'tkn', key: KEY })
+    expect(loadSignerSetting()).toEqual({ mode: 'nsec', nsec: 'nsec1abc' })
   })
 
-  it('ignores corrupted data', () => {
-    localStorage.setItem('mamata:admin', '{roto')
+  it('round-trips the extension mode', () => {
+    saveSignerSetting({ mode: 'nip07' })
 
-    expect(loadSettings()).toBeNull()
+    expect(loadSignerSetting()).toEqual({ mode: 'nip07' })
+  })
+
+  it('ignores corrupted or unknown data', () => {
+    localStorage.setItem('mamata:admin:firmante', '{roto')
+    expect(loadSignerSetting()).toBeNull()
+
+    localStorage.setItem('mamata:admin:firmante', JSON.stringify({ mode: 'otro' }))
+    expect(loadSignerSetting()).toBeNull()
   })
 
   it('forgets everything on clear', () => {
-    saveSettings({ token: 'tkn', key: KEY })
+    saveSignerSetting({ mode: 'nip07' })
 
-    clearSettings()
+    clearSignerSetting()
 
-    expect(loadSettings()).toBeNull()
+    expect(loadSignerSetting()).toBeNull()
   })
 })

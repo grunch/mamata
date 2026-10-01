@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
+import { npubEncode } from 'nostr-tools/nip19'
+import { generateSecretKey, getPublicKey } from 'nostr-tools/pure'
+import { nsecEncode } from 'nostr-tools/nip19'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isDirty, type AdminContext, type AdminSession } from '../src/admin/context.ts'
-import type { GitHubRepo } from '../src/admin/github.ts'
+import type { AdminContext, AdminSession } from '../src/admin/context.ts'
+import type { Device } from '../src/admin/devices.ts'
 import { cardsSection } from '../src/admin/screens/cards.ts'
 import { linkSection } from '../src/admin/screens/link.ts'
 import { messagesSection } from '../src/admin/screens/messages.ts'
@@ -15,18 +18,10 @@ import { sampleContent } from './fixtures.ts'
 vi.mock('qrcode', () => ({ default: { toCanvas: vi.fn(async () => undefined) } }))
 
 const NOW = '2026-10-01T15:00:00.000Z'
-const KEY = 'qC8FpiQqZ7ZqHBEfxk4sd5eZUkVjutzu078hOO6I2_Y'
+const ADMIN = getPublicKey(generateSecretKey())
 
-function makeCtx(content: Content = sampleContent()) {
-  let session: AdminSession = {
-    repo: {} as GitHubRepo,
-    key: {} as CryptoKey,
-    encodedKey: KEY,
-    baseCommit: 'c0',
-    content,
-    publishedJson: JSON.stringify(content),
-    newImages: new Map(),
-  }
+function makeCtx(content: Content = sampleContent(), devices: Device[] = []) {
+  let session: AdminSession = { adminPubkey: ADMIN, content, devices, publishing: false, unpublished: 0 }
   const ctx = {
     get session() {
       return session
@@ -39,7 +34,10 @@ function makeCtx(content: Content = sampleContent()) {
     imageUrl: vi.fn(async (): Promise<string | null> => null),
     toast: vi.fn(),
     rerender: vi.fn(),
-    rotate: vi.fn(async () => undefined),
+    approve: vi.fn(async () => undefined),
+    revoke: vi.fn(async () => undefined),
+    refreshDevices: vi.fn(async () => undefined),
+    retry: vi.fn(async () => undefined),
     logout: vi.fn(),
   } satisfies AdminContext
   return ctx
@@ -65,17 +63,6 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 afterEach(() => {
   vi.restoreAllMocks()
-})
-
-describe('isDirty', () => {
-  it('detects unpublished changes', () => {
-    const ctx = makeCtx()
-    expect(isDirty(ctx.session)).toBe(false)
-
-    ctx.edit({ ...ctx.session.content, userName: 'Otra' })
-
-    expect(isDirty(ctx.session)).toBe(true)
-  })
 })
 
 describe('messages section', () => {
@@ -250,31 +237,76 @@ describe('trash section', () => {
 })
 
 describe('link section', () => {
-  it('shows the pairing link and copies it', async () => {
+  const device = (status: Device['status'], code = '482113', suspicious = false): Device => ({
+    pubkey: getPublicKey(generateSecretKey()),
+    code,
+    status,
+    requestedAt: Date.parse('2026-10-01T14:58:00.000Z') / 1000,
+    suspicious,
+    keyAt: 0,
+  })
+
+  it('shows the public pairing link with the admin npub and copies it', async () => {
     const writeText = vi.fn(async () => undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     const ctx = makeCtx()
     const el = linkSection(ctx)
+    const link = `https://mamata.live/#npub=${npubEncode(ADMIN)}`
 
-    expect(el.querySelector<HTMLInputElement>('input')!.value).toBe(`https://mamata.live/#k=${KEY}`)
+    expect(el.querySelector<HTMLInputElement>('input')!.value).toBe(link)
     button(el, 'Copiar link').click()
     await flush()
 
-    expect(writeText).toHaveBeenCalledWith(`https://mamata.live/#k=${KEY}`)
-    expect(ctx.toast).toHaveBeenCalledWith('Link copiado.')
+    expect(writeText).toHaveBeenCalledWith(link)
   })
 
-  it('rotates the key only after confirming', () => {
-    const ctx = makeCtx()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  it('shows pending phones with their code and approves them', () => {
+    const pending = device('pending', '482113')
+    const ctx = makeCtx(sampleContent(), [pending])
     const el = linkSection(ctx)
 
-    button(el, 'Cambiar la clave').click()
-    expect(ctx.rotate).not.toHaveBeenCalled()
-    button(el, 'Cambiar la clave').click()
+    expect(text(el)).toContain('482113')
+    button(el, 'Aprobar').click()
 
-    expect(confirm).toHaveBeenCalledTimes(2)
-    expect(ctx.rotate).toHaveBeenCalledTimes(1)
+    expect(ctx.approve).toHaveBeenCalledWith(pending.pubkey)
+  })
+
+  it('does not let you approve two phones that share a code', () => {
+    const ctx = makeCtx(sampleContent(), [device('pending', '482113', true), device('pending', '482113', true)])
+    const el = linkSection(ctx)
+
+    expect(text(el)).toContain('Hay otro pedido con el mismo código')
+    expect(el.querySelectorAll('button')).not.toContain(expect.objectContaining({ textContent: 'Aprobar' }))
+    expect([...el.querySelectorAll('button')].some((b) => b.textContent === 'Aprobar')).toBe(false)
+  })
+
+  it('says when each phone asked for access', () => {
+    const el = linkSection(makeCtx(sampleContent(), [device('pending')]))
+
+    expect(text(el)).toContain('Pidió acceso hoy a las 11:58')
+  })
+
+  it('removes access to an approved phone only after confirming', () => {
+    const approved = device('approved', '123456')
+    const ctx = makeCtx(sampleContent(), [approved])
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const el = linkSection(ctx)
+
+    button(el, 'Quitar acceso').click()
+    expect(ctx.revoke).not.toHaveBeenCalled()
+    button(el, 'Quitar acceso').click()
+
+    expect(ctx.revoke).toHaveBeenCalledWith(approved.pubkey)
+  })
+
+  it('says when there are no phones yet and can look for new requests', () => {
+    const ctx = makeCtx()
+    const el = linkSection(ctx)
+
+    expect(text(el)).toContain('Todavía no hay teléfonos')
+    button(el, 'Buscar pedidos nuevos').click()
+
+    expect(ctx.refreshDevices).toHaveBeenCalled()
   })
 
   it('logs out', () => {
@@ -287,43 +319,43 @@ describe('link section', () => {
 })
 
 describe('setup screen', () => {
-  it('requires a token and a valid key', async () => {
+  it('requires a valid nsec', async () => {
     const onSubmit = vi.fn(async () => null)
     const el = mount(setupScreen(onSubmit))
-    const form = el.querySelector('form')!
 
-    form.requestSubmit()
-    await flush()
-    expect(text(el.querySelector('.error')!)).toContain('Falta el token')
-
-    input(el, 'Token').value = 'tkn'
-    input(el, 'Clave').value = 'cualquier cosa'
-    form.requestSubmit()
-    await flush()
-    expect(text(el.querySelector('.error')!)).toContain('La clave no es válida')
-    expect(onSubmit).not.toHaveBeenCalled()
-  })
-
-  it('accepts the pairing link and reports problems from the caller', async () => {
-    const onSubmit = vi.fn(async () => 'GitHub rechazó el token')
-    const el = mount(setupScreen(onSubmit))
-
-    input(el, 'Token').value = ' tkn '
-    input(el, 'Clave').value = `https://mamata.live/#k=${KEY}`
+    input(el, 'Clave privada').value = 'npub1noesunansec'
     el.querySelector('form')!.requestSubmit()
     await flush()
 
-    expect(onSubmit).toHaveBeenCalledWith({ token: 'tkn', key: KEY, userName: 'Marta', adminName: 'tu familiar' })
-    expect(text(el.querySelector('.error')!)).toContain('GitHub rechazó el token')
+    expect(text(el.querySelector('.error')!)).toContain('nsec')
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('generates a new key on request', async () => {
-    const el = mount(setupScreen(vi.fn(async () => null), 'Mensaje inicial'))
-    expect(text(el.querySelector('.error')!)).toBe('Mensaje inicial')
+  it('enters with the nsec and the names for a first publication', async () => {
+    const onSubmit = vi.fn(async () => 'No pude conectar con los relays')
+    const el = mount(setupScreen(onSubmit))
+    const nsec = nsecEncode(generateSecretKey())
 
-    button(el, 'generar una clave nueva').click()
+    input(el, 'Clave privada').value = ` ${nsec} `
+    input(el, 'Nombre de quien usa la app').value = 'Marta'
+    el.querySelector('form')!.requestSubmit()
     await flush()
 
-    expect(input(el, 'Clave').value).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(onSubmit).toHaveBeenCalledWith({
+      setting: { mode: 'nsec', nsec },
+      names: { userName: 'Marta', adminName: 'tu familiar' },
+    })
+    expect(text(el.querySelector('.error')!)).toContain('No pude conectar')
+  })
+
+  it('can use a browser extension instead', async () => {
+    const onSubmit = vi.fn(async () => null)
+    const el = mount(setupScreen(onSubmit, 'Mensaje inicial'))
+    expect(text(el.querySelector('.error')!)).toBe('Mensaje inicial')
+
+    button(el, 'Usar extensión').click()
+    await flush()
+
+    expect(onSubmit).toHaveBeenCalledWith({ setting: { mode: 'nip07' }, names: { userName: 'Marta', adminName: 'tu familiar' } })
   })
 })

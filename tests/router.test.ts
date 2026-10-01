@@ -13,6 +13,7 @@ describe('parseRoute', () => {
     ['#/tarjetas/g1/ver-saldo', { name: 'card-explainer', id: 'g1' }],
     ['#/tarjetas/g1/anotar', { name: 'card-note', id: 'g1' }],
     ['#/tarjetas/g1/historial', { name: 'card-history', id: 'g1' }],
+    ['#/ajustes', { name: 'settings' }],
   ])('parses %s', (hash, route) => {
     expect(parseRoute(hash)).toEqual(route)
   })
@@ -37,6 +38,7 @@ describe('routeHref', () => {
     { name: 'card-explainer', id: 'g1' },
     { name: 'card-note', id: 'g1' },
     { name: 'card-history', id: 'g1' },
+    { name: 'settings' },
   ])('round-trips %o', (route) => {
     expect(parseRoute(routeHref(route))).toEqual(route)
   })

@@ -13,25 +13,33 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
 
 ## 2. Arquitectura (obligatoria)
 
-**Solo un sitio estático. No hay backend ni servidor propio.**
+**Sitio estático + Nostr. No hay backend ni servidor propio.**
 
-- **Frontend**: sitio estático generado con **Vite** (HTML, CSS y JavaScript/TypeScript sin framework pesado), publicado en **GitHub Pages** con una GitHub Action, con el dominio propio **`mamata.live`** (`base` de Vite = `/`, archivo `public/CNAME`, HTTPS forzado).
-  - Repo: `https://github.com/grunch/mamata` (público). Sitio: `https://mamata.live/`. El README explica los registros DNS (A/AAAA del apex hacia GitHub Pages, `www` como CNAME a `grunch.github.io`) y cómo verificar el dominio en GitHub.
-  - Sin la clave, la app no muestra ningún contenido: solo una pantalla amable "Para ver tus cosas, pedile el link a tu familiar." (sin mencionar claves ni cifrado).
-- **Datos del admin** (mensajes, recordatorios, gift cards, imágenes): viven **dentro del repo, en la rama `data`** (no en `main`), y **cifrados**. `main` está protegida (solo PRs, sin excepciones) para que el token del panel no pueda cambiar el código desplegado; el panel avisa con un `repository_dispatch` y el workflow copia de `data` solo los archivos `.enc`:
-  - Un archivo `data/data.enc` con todo el contenido en JSON, cifrado con **AES-GCM 256** (Web Crypto API), y una imagen cifrada por archivo en `data/img/<id>.enc`.
-  - La **clave** es aleatoria (256 bits) y **nunca** se guarda en el repo. Viaja solo en el fragmento del link de vinculación (`https://…/#k=<clave>`): el fragmento no se envía al servidor ni queda en los logs de GitHub.
-  - El repo es público: el contenido cifrado (y todo su historial en git) es visible para cualquiera. Si la clave se filtra, se puede leer todo, incluso lo viejo. El README tiene que explicar esto y cómo rotar la clave.
-- **Cómo publica el admin**: el panel `/admin` corre en el navegador del admin y:
-  1. le pide una vez la **clave** y un **token de GitHub de alcance fino** (fine-grained PAT con permiso *Contents: read and write* solo sobre este repo), y los guarda en el `localStorage` de su navegador;
-  2. descarga y descifra `data/data.enc`, deja editar, vuelve a cifrar y hace commit con la API REST de GitHub (`PUT /repos/{owner}/{repo}/contents/{path}`, usando el `sha` para detectar conflictos);
-  3. el commit dispara la GitHub Action y en uno o dos minutos el usuario ve lo nuevo. El panel muestra "Publicado. El teléfono lo va a ver en unos minutos."
-  - Sin clave y sin token, `/admin` no puede leer ni publicar nada, aunque sea una página pública. No hace falta contraseña aparte.
-- **Datos del usuario** (leídos, hechos, saldos anotados): se guardan **solo en su teléfono** (IndexedDB). El admin **no** los ve. Nunca se borran por una actualización del contenido.
-- **Vinculación del usuario**: el admin genera un **link de vinculación** con la clave (y código QR). El usuario lo abre una vez, la app guarda la clave y desde ahí no vuelve a pedir nada. Nunca pedirle contraseñas al usuario.
-  - Instalar la PWA **después** de abrir el link, desde la misma app de Chrome, para que la app instalada tenga la clave.
-- **Rotar la clave** desde `/admin`: genera una clave nueva, vuelve a cifrar todo, publica y muestra el link nuevo. El link viejo deja de servir para el contenido nuevo.
-- **Sin notificaciones push**: un sitio estático no puede mandar avisos con la app cerrada. Los mensajes nuevos y los recordatorios del día se muestran **al abrir la app**. Dejá el código organizado para poder agregar push más adelante sin rehacer todo, pero no lo implementes.
+- **Frontend**: sitio estático generado con **Vite** (HTML, CSS y TypeScript sin framework pesado), publicado en **GitHub Pages** con una GitHub Action en cada push a `main`, con el dominio propio **`mamata.live`** (`base` de Vite = `/`, `public/CNAME`, HTTPS forzado). Repo: `https://github.com/grunch/mamata` (público); `main` protegida (solo PRs). GitHub Pages sirve **solo el código**: el contenido no pasa por GitHub.
+- **Contenido por Nostr, en tiempo real.** Relays: `wss://relay.mostro.network`, `wss://relay.shadowbip.com`, `wss://nos.lol` (probados: aceptan los kinds 36000–36012).
+- **Claves**:
+  - **Admin**: firma todo lo que se publica. En el panel se usa pegando la nsec (guardada solo en ese navegador) **o** con una extensión NIP-07 (nos2x u otras) que soporte `nip44`.
+  - **Teléfono**: la app genera su propio par de claves al abrirse por primera vez y lo guarda en IndexedDB. Nunca sale del teléfono. Se puede ver en ⚙️ Ajustes (npub siempre; nsec solo detrás de un aviso).
+  - **Clave de contenido** (32 bytes aleatorios): la genera el panel. Cifra todos los ítems e imágenes. Viaja cifrada con NIP-44 a cada teléfono aprobado y a la propia pubkey del admin (para abrir el panel en otro navegador).
+- **Link y QR de vinculación**: `https://mamata.live/#npub=npub1…` (la npub del admin). **No contiene ningún secreto.**
+- **Eventos** (kinds libres en el registro de NIPs; todos firmados por el admin salvo el 36010):
+
+  | kind | qué | `d` | contenido |
+  |---|---|---|---|
+  | 36000 | mensaje | id | NIP-44 v2 con la clave de contenido |
+  | 36001 | recordatorio | id | ídem |
+  | 36002 | gift card | id | ídem |
+  | 36003 | perfil (nombres) | `perfil` | ídem |
+  | 36010 | pedido de vinculación (firma el **teléfono**, `p` = admin) | `vincular` | vacío (la pubkey es el autor) |
+  | 36011 | clave de contenido para un teléfono (`p` = teléfono) | npub del teléfono | NIP-44 admin → teléfono |
+  | 36012 | copia de la clave de contenido para el admin (`p` = admin) | `admin` | NIP-44 admin → admin |
+
+  - Cada ítem es su propio evento reemplazable: editar = publicar una versión nueva con el mismo `d`.
+  - Borrar, archivar o pausar = nueva versión con un campo de estado (papelera recuperable). Nunca se depende de que un relay borre.
+- **Vinculación**: el teléfono abre el link, genera sus claves, publica un 36010 y muestra un **código de 6 dígitos** derivado de su pubkey. El panel muestra el pedido con el mismo código; el admin lo compara y toca **Aprobar** (publica el 36011). **Quitar acceso** a un teléfono = nueva clave de contenido, volver a cifrar y publicar todo, y mandar 36011 solo a los teléfonos que quedan.
+- **Imágenes**: comprimidas en el navegador, cifradas con AES-GCM (clave derivada de la clave de contenido) y subidas a **Blossom** (`nostr.download`, `blossom.yakihonne.com`; aceptan archivos cifrados) con una autorización kind 24242 firmada por el admin. La app las baja por SHA-256 y verifica el hash antes de descifrar.
+- **Datos del usuario** (leídos, hechos, saldos anotados): solo en su teléfono (IndexedDB). El admin no los ve.
+- **Sin notificaciones push** con la app cerrada. Con la app abierta, lo nuevo aparece en segundos (suscripción en vivo).
 
 ## 3. App del usuario (vista principal)
 
@@ -91,15 +99,15 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
 ## 4. Panel del admin (`/admin`)
 
 - Diseño práctico, pensado para el celular del admin.
-- Primera vez: pide la clave (o permite generar una nueva si todavía no hay datos) y el token de GitHub. Explicar en una línea cómo crear el token, con link a la página de GitHub.
+- Primera vez: elegir cómo firmar: pegar la nsec del admin o usar una extensión NIP-07. Si no hay clave de contenido publicada (kind 36012), se genera una.
 - Secciones:
   - **Mensajes**: crear, editar y archivar. Vista previa de cómo lo va a ver el usuario.
   - **Recordatorios**: crear, editar, pausar y borrar.
   - **Tarjetas de regalo**: alta, edición y baja; subir imagen (comprimir y redimensionar en el navegador antes de cifrar y subir); elegir proveedor; código de canje para armar la URL de consulta (o pegar directamente el link de la gift card virtual); monto inicial y vencimiento; cargar un saldo corregido.
-  - **Vincular teléfono**: mostrar el link de vinculación y su código QR; rotar la clave.
-- Todo lo que el admin borra pasa primero a una papelera recuperable (dentro del mismo JSON, con fecha de borrado). Además queda el historial de git.
-- Los cambios se juntan y se publican con un botón **"Publicar cambios"** (un solo commit), mostrando si hay cambios sin publicar.
-- Si el commit falla por conflicto (`sha` viejo), volver a descargar, avisar y no perder lo que el admin estaba editando.
+  - **Vincular teléfono**: link y QR con la npub del admin; pedidos pendientes con su código de 6 dígitos (Aprobar; los pedidos que comparten código se marcan como sospechosos y no se pueden aprobar); teléfonos aprobados con "Quitar acceso"; estado de los relays.
+- Todo lo que el admin borra pasa primero a una papelera recuperable (el evento queda con estado "en la papelera").
+- Cada cambio se publica al guardar (un evento por ítem), mostrando en cuántos relays quedó. Menos de 2 relays = error visible.
+- Antes de reemplazar un ítem, si en los relays hay una versión más nueva que la que se estaba editando, avisar y no pisarla sin confirmar.
 
 ## 5. Accesibilidad y diseño para persona mayor
 
@@ -118,27 +126,26 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
 - `manifest.json` completo (nombre, íconos 192 y 512, maskable, `display: standalone`, colores) y `scope` y `start_url` = `/` (dominio `mamata.live`).
 - Service worker con:
   - caché de la app (shell) para que abra sin internet;
-  - *network-first* (con tiempo máximo) para `data/data.enc`: con internet siempre lo último, sin internet lo guardado. Se descartó *stale-while-revalidate* para este archivo porque, después de cambiar la clave, el link nuevo recibiría primero el archivo viejo y no podría abrirlo;
-  - *stale-while-revalidate* para las imágenes (no cambian para un mismo id);
-  - al volver a la app (`visibilitychange`) y cada pocos minutos mientras está abierta, revisar si hay contenido nuevo.
+  - caché permanente para las imágenes de Blossom (se piden por SHA-256: nunca cambian).
+- Contenido: suscripción en vivo a los relays mientras la app está a la vista; al pasar a segundo plano se cierra y al volver se reabre. Lo último bueno de cada ítem queda en IndexedDB y **nunca se reemplaza por una versión más vieja** (`created_at`).
 - Si no hay conexión, mostrar un aviso suave: "Sin internet. Te muestro la última información guardada."
-- Si el contenido no se puede descifrar (clave vieja después de rotarla), mostrar: "Hay información nueva. Pedile a [nombre del admin] que te mande el link otra vez." Nunca borrar lo que ya estaba guardado.
+- Si el teléfono todavía no fue aprobado (o se le quitó el acceso), mostrar en grande el código de 6 dígitos y "Esperando que [nombre del admin] te habilite". Nunca borrar lo que ya estaba guardado.
 - **Onboarding de una sola vez** al abrir el link de vinculación: pantalla grande de bienvenida y un banner o instrucciones simples para instalar la app en la pantalla de inicio.
 
 ## 7. Entregables
 
 1. Proyecto Vite en la raíz del repo, con la app del usuario y `/admin` como dos entradas (multi-page) del mismo build.
-2. GitHub Action para build y despliegue a GitHub Pages, que corre en cada push a `main` (incluidos los commits del admin).
-3. Módulo de cifrado (Web Crypto, AES-GCM) compartido entre la app y el admin, con tests.
-4. Datos de ejemplo (seed) para probar en local sin datos reales, más un script para cifrarlos con una clave de prueba.
-5. README paso a paso, pensado para alguien que nunca usó GitHub Pages: crear el repo, activar Pages, crear el token de alcance fino, generar la clave en `/admin`, cargar el contenido, vincular el teléfono del usuario e instalar la app, y rotar la clave.
+2. GitHub Action para build y despliegue a GitHub Pages en cada push a `main`.
+3. Módulos compartidos de Nostr (kinds, eventos, cifrado NIP-44 con la clave de contenido, código de vinculación) y Blossom, con tests.
+4. Datos de ejemplo para probar en local contra relays simulados.
+5. README paso a paso: activar Pages y el dominio, entrar al panel con la nsec o la extensión, cargar contenido, vincular y aprobar el teléfono, quitar acceso.
 6. Una lista de verificación de accesibilidad y una de pruebas manuales en Android: vincular e instalar; modo sin conexión; ver contenido nuevo después de publicar desde `/admin`; abrir la página de saldo y volver con la X y con el botón atrás; que aparezca la pregunta "¿Cuánto te queda?"; que los saldos anotados sigan ahí después de una actualización.
 
 ## 8. Restricciones
 
 - Mantener el proyecto simple y mantenible por una sola persona; no agregar dependencias innecesarias.
-- Sin backend ni servicios externos propios: solo GitHub Pages y la API de GitHub desde el panel del admin.
-- Ningún dato sensible sin cifrar en el repo (códigos de tarjetas, imágenes, mensajes, nombres). Nunca la clave ni el token en el repo, en logs ni en la consola.
+- Sin backend propio: GitHub Pages (código), relays Nostr y servidores Blossom.
+- Ningún dato sensible sin cifrar en relays, en Blossom ni en el repo (códigos de tarjetas, imágenes, mensajes, nombres). Nunca una nsec ni la clave de contenido en el repo, en logs ni en la consola.
 - No usar servicios pagos.
 - No hacer scraping ni consultas automáticas a los sitios de las gift cards.
 - Antes de escribir código, presentá un plan breve con la estructura de archivos y el modelo de datos (mensajes, recordatorios, gift cards, proveedores, registros de saldo, papelera y el formato del archivo cifrado) y esperá confirmación.

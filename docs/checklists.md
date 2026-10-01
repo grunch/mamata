@@ -20,12 +20,14 @@
 
 ### Vincular e instalar
 - [ ] Abrir `https://mamata.live/` sin link: dice "Para ver tus cosas, pedile el link a tu familiar."
-- [ ] Abrir el link de vinculación (o escanear el QR): aparece la bienvenida y la clave ya no se ve en la barra de direcciones.
+- [ ] Abrir el link de vinculación (o escanear el QR): el teléfono muestra "Esperando que tu familiar te habilite" y un código de 6 números; la npub ya no se ve en la barra de direcciones.
+- [ ] En el panel aparece "Teléfono · código XXXX" con el mismo código. Aprobar: en segundos el teléfono muestra la bienvenida.
 - [ ] Instalar desde la bienvenida o con ⋮ → "Agregar a la pantalla de inicio". El ícono aparece y la app abre a pantalla completa.
 - [ ] Cerrar la app del todo y volver a abrirla desde el ícono: entra directo al inicio, sin pedir nada.
+- [ ] ⚙️ Ajustes muestra el mismo código, la npub del teléfono y la clave privada solo después del aviso.
 
 ### Contenido
-- [ ] Publicar un mensaje desde el panel. A los 1–2 minutos, al volver a la app, aparece destacado arriba.
+- [ ] Publicar un mensaje desde el panel con la app abierta: aparece destacado arriba en segundos, sin tocar nada.
 - [ ] "Entendido" lo marca como leído y no lo borra: sigue en "Mensajes anteriores".
 - [ ] "Leer en voz alta" lo lee con voz en español (prueba: un mensaje que diga "hola" no tiene que sonar en inglés).
 - [ ] Si el botón "Leer en voz alta" no aparece, el teléfono no tiene voz en español: Ajustes → Sistema → Idiomas → Salida de texto a voz → motor de Google → Instalar datos de voz → Español. Después reabrir la app.
@@ -52,6 +54,6 @@
   - Modelo / versión de Android / versión de Chrome: …
   - Resultado: …
 
-### Cambio de clave
-- [ ] En el panel, "Cambiar la clave". Al reabrir la app con el link viejo, sigue mostrando lo último con el aviso "Hay información nueva. Pedile a … que te mande el link otra vez."
-- [ ] Abrir el link nuevo: se ve el contenido nuevo y el aviso desaparece.
+### Quitar acceso
+- [ ] Con dos teléfonos aprobados, "Quitar acceso" a uno: ese vuelve a "Esperando que tu familiar te habilite"; el otro sigue viendo todo (incluidas las fotos).
+- [ ] Borrar los datos del navegador en el teléfono: genera un código nuevo y aparece como pedido nuevo en el panel.

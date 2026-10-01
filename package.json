@@ -10,8 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "e2e": "playwright test",
-    "seed": "node scripts/seed.ts"
+    "e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -26,6 +25,7 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
+    "nostr-tools": "^2.25.2",
     "qrcode": "^1.5.4"
   }
 }
