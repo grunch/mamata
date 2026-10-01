@@ -108,10 +108,18 @@ export function allEntries(content: Content, images: Map<string, string>): Entry
   return [...entriesOf(content, images).values()]
 }
 
-export function changedEntries(before: Content, after: Content, images: Map<string, string>): Entry[] {
+// isNew: en la primera publicación van siempre los nombres, aunque no hayan cambiado,
+// así el teléfono nunca queda sin saber cómo se llama cada uno.
+export function changedEntries(
+  before: Content,
+  after: Content,
+  images: Map<string, string>,
+  { isNew = false }: { isNew?: boolean } = {},
+): Entry[] {
   const previous = entriesOf(before, images)
+  const profileKey = versionKey(KIND.profile, PROFILE_D)
   return [...entriesOf(after, images).entries()]
-    .filter(([key, entry]) => JSON.stringify(previous.get(key)?.value) !== JSON.stringify(entry.value))
+    .filter(([key, entry]) => (isNew && key === profileKey) || JSON.stringify(previous.get(key)?.value) !== JSON.stringify(entry.value))
     .map(([, entry]) => entry)
 }
 

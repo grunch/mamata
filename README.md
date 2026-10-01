@@ -75,7 +75,7 @@ App web (PWA) para que una persona mayor vea **mensajes, recordatorios y tarjeta
    - **Generar una clave nueva** (la primera vez): el panel crea una nsec para Mamata y te la muestra una sola vez. **Guardala en tu gestor de contraseñas** antes de entrar.
    - **Pegar la nsec** (`nsec1…`): queda guardada solo en ese navegador.
    - **Usar extensión de Nostr** (nos2x u otra con soporte de NIP-44): la nsec queda en la extensión.
-3. La primera vez completá el nombre de quien usa la app y el tuyo.
+3. La primera vez el panel abre en **⚙️ Ajustes**: completá el nombre de quien usa la app y el tuyo, y tocá **Guardar nombres**. Los podés cambiar cuando quieras desde ahí.
 4. Cargá un mensaje y tocá **Guardar**: se publica en el momento. La barra de abajo dice **"Todo publicado"**, o **"Reintentar"** si algún cambio no llegó a por lo menos 2 relays.
 
 ### 3. Vincular el teléfono

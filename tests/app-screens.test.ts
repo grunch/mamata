@@ -145,6 +145,13 @@ describe('home screen', () => {
     expect(text(el)).toContain('Tenés un mensaje nuevo')
   })
 
+  it('just says hello when the name was not set yet', async () => {
+    const ctx = await makeCtx({ content: { ...sampleContent(), userName: '' } })
+
+    expect(text(homeScreen(ctx).querySelector('h1')!)).toBe('¡Hola!')
+    expect(text(welcomeScreen(ctx.state, null, () => undefined).querySelector('h1')!)).toBe('¡Hola!')
+  })
+
   it('lists today reminders that are not done yet', async () => {
     const ctx = await makeCtx()
 

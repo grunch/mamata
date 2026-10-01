@@ -2,7 +2,7 @@ import { formatLongDate, formatTime, groupReminders } from '../../shared/dates.t
 import { unreadMessages, type AppContext } from '../context.ts'
 import { LocalStore } from '../local-store.ts'
 import { routeHref } from '../router.ts'
-import { bigLink, h, screen } from '../ui.ts'
+import { bigLink, greeting, h, screen } from '../ui.ts'
 
 function newMessagesLabel(count: number): string {
   return count === 1 ? 'Tenés un mensaje nuevo' : `Tenés ${count} mensajes nuevos`
@@ -18,7 +18,7 @@ export function homeScreen(ctx: AppContext): HTMLElement {
   )
 
   return screen(
-    `¡Hola, ${content.userName}!`,
+    greeting(content.userName),
     [
       h('p', { class: 'today', text: formatLongDate(now) }),
       latest &&

@@ -16,13 +16,15 @@ import { allEntries, changedEntries, findConflicts, loadAdmin, publishEntries, t
 import { cardsSection } from './screens/cards.ts'
 import { linkSection } from './screens/link.ts'
 import { messagesSection } from './screens/messages.ts'
+import { namesSection } from './screens/names.ts'
 import { remindersSection } from './screens/reminders.ts'
 import { setupScreen } from './screens/setup.ts'
 import { trashSection } from './screens/trash.ts'
 import { clearSignerSetting, loadSignerSetting, saveSignerSetting, type SignerSetting } from './settings.ts'
 
 const TOAST_MS = 5000
-const DEFAULT_NAMES: Profile = { userName: 'Marta', adminName: 'tu familiar' }
+// Sin nombres hasta que se carguen en ⚙️ Ajustes.
+const DEFAULT_NAMES: Profile = { userName: '', adminName: 'tu familiar' }
 const root = document.getElementById('admin')
 
 function toast(message: string): void {
@@ -61,7 +63,7 @@ interface Panel {
   publishing: boolean
 }
 
-async function openPanel(setting: SignerSetting, names: Profile): Promise<Panel> {
+async function openPanel(setting: SignerSetting, names: Profile = DEFAULT_NAMES): Promise<Panel> {
   const signer = signerFor(setting)
   const relays = new Relays()
   const admin = await signer.getPublicKey()
@@ -72,10 +74,11 @@ async function openPanel(setting: SignerSetting, names: Profile): Promise<Panel>
 
 function showSetup(initialError?: string): void {
   if (!root) return
-  const screen = setupScreen(async ({ setting, names }) => {
+  const screen = setupScreen(async ({ setting }) => {
     try {
-      const panel = await openPanel(setting, names)
+      const panel = await openPanel(setting)
       saveSignerSetting(setting)
+      openNamesIfMissing(panel)
       startPanel(panel)
       return null
     } catch (error) {
@@ -90,6 +93,11 @@ function sectionFromHash(): Section {
   return SECTIONS.some((s) => s.id === id) ? (id as Section) : 'mensajes'
 }
 
+// Si todavía no hay nombres, se abre directo en ⚙️ Ajustes para cargarlos.
+function openNamesIfMissing(panel: Panel): void {
+  if (!panel.state.content.userName.trim() && !location.hash.replace(/^#\/?/, '')) location.hash = '#/ajustes'
+}
+
 function renderSection(ctx: AdminContext): HTMLElement {
   switch (sectionFromHash()) {
     case 'mensajes':
@@ -102,6 +110,8 @@ function renderSection(ctx: AdminContext): HTMLElement {
       return linkSection(ctx)
     case 'papelera':
       return trashSection(ctx)
+    case 'ajustes':
+      return namesSection(ctx)
   }
 }
 
@@ -254,7 +264,7 @@ function startPanel(panel: Panel): void {
     },
     now: () => new Date().toISOString(),
     edit(next) {
-      const entries = changedEntries(panel.state.content, next, panel.state.images)
+      const entries = changedEntries(panel.state.content, next, panel.state.images, { isNew: panel.state.isNew })
       panel.state = { ...panel.state, content: next }
       render()
       if (entries.length > 0) enqueuePublish(entries)
@@ -326,7 +336,9 @@ async function boot(): Promise<void> {
   const setting = loadSignerSetting()
   if (!setting) return showSetup()
   try {
-    startPanel(await openPanel(setting, DEFAULT_NAMES))
+    const panel = await openPanel(setting)
+    openNamesIfMissing(panel)
+    startPanel(panel)
   } catch (error) {
     showSetup(explain(error))
   }
