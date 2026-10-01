@@ -18,7 +18,7 @@ const adminPubkey = getPublicKey(adminSecret)
 function fakeRelays() {
   const subs: { filter: Filter; onEvent: (e: Event) => void; closed: boolean }[] = []
   const published: Event[] = []
-  return {
+  const relays = {
     subs,
     published,
     subscribe: vi.fn((filter: Filter, onEvent: (e: Event) => void) => {
@@ -28,9 +28,10 @@ function fakeRelays() {
         sub.closed = true
       }
     }),
+    online: true,
     publish: vi.fn(async (event: Event) => {
       published.push(event)
-      return { ok: ['wss://a', 'wss://b'], failed: [] }
+      return relays.online ? { ok: ['wss://a', 'wss://b'], failed: [] } : { ok: [], failed: [{ relay: 'wss://a', reason: 'sin red' }] }
     }),
     push(event: Event) {
       for (const sub of subs) {
@@ -38,6 +39,7 @@ function fakeRelays() {
       }
     },
   }
+  return relays
 }
 
 function memoryCache(initial: Event[] = []): SyncCache & { events: Event[] } {
@@ -191,6 +193,60 @@ describe('ContentSync', () => {
 
     const state = states.at(-1)
     expect(state?.status === 'ready' && state.content.messages.map((m) => m.id)).toEqual(['m1'])
+  })
+
+  it('does not open duplicate subscriptions when started twice', async () => {
+    const { sync, relays } = await setup()
+
+    await Promise.all([sync.start(), sync.start()])
+
+    expect(relays.subs.filter((s) => !s.closed)).toHaveLength(2)
+  })
+
+  it('stays closed if stopped while it was still starting', async () => {
+    const { sync, relays } = await setup()
+
+    const starting = sync.start()
+    sync.stop()
+    await starting
+
+    expect(relays.subs.filter((s) => !s.closed)).toHaveLength(0)
+  })
+
+  it('asks for pairing again on the next start if the first request did not get through', async () => {
+    const { sync, relays } = await setup()
+    relays.online = false
+    await sync.start()
+    await flush()
+    sync.stop()
+
+    relays.online = true
+    await sync.start()
+    await flush()
+
+    expect(relays.published.filter((e) => e.kind === KIND.pairingRequest)).toHaveLength(2)
+  })
+
+  it('keeps showing the last good content while a new key is on its way', async () => {
+    const { sync, relays, last, phonePubkey } = await setup()
+    const oldKey = generateContentKey()
+    const newKey = generateContentKey()
+    const message = sampleContent().messages[0]!
+    await sync.start()
+    relays.push(await admin.signEvent(await deviceKeyTemplate(admin, phonePubkey, oldKey, 1)))
+    relays.push(await itemEvent(oldKey, KIND.message, 'm1', envelopeFor({ kind: KIND.message, item: message }), 2))
+    await flush()
+
+    // Rotación: el ítem re-cifrado llega antes que la clave nueva.
+    relays.push(await itemEvent(newKey, KIND.message, 'm1', envelopeFor({ kind: KIND.message, item: message }), 10))
+    await flush()
+    const during = last()
+    expect(during?.status === 'ready' && during.content.messages.map((m) => m.id)).toEqual(['m1'])
+
+    relays.push(await admin.signEvent(await deviceKeyTemplate(admin, phonePubkey, newKey, 11)))
+    await flush()
+    const after = last()
+    expect(after?.status === 'ready' && after.content.messages.map((m) => m.id)).toEqual(['m1'])
   })
 
   it('closes its subscriptions when stopped', async () => {

@@ -9,7 +9,7 @@ import { openItem } from '../shared/nostr/content-key.ts'
 import { buildContent, dTag, parseEnvelope, parseProfile, type ItemEnvelope, type Profile } from '../shared/nostr/events.ts'
 import { openDeviceKey, pairingRequestTemplate } from '../shared/nostr/keys.ts'
 import { pairingCode } from '../shared/nostr/pairing.ts'
-import type { Relays } from '../shared/nostr/relays.ts'
+import { publishedEnough, type Relays } from '../shared/nostr/relays.ts'
 
 export interface SyncCache {
   loadEvents(): Promise<Event[]>
@@ -37,39 +37,58 @@ const addressOf = (event: Event): string => `${event.kind}:${event.pubkey}:${dTa
 
 export class ContentSync {
   private readonly latest = new Map<string, Event>()
-  private readonly stops: (() => void)[] = []
+  // Último valor que se pudo descifrar de cada ítem: si llega una versión con una clave
+  // que todavía no tenemos (rotación en curso), se sigue mostrando la anterior.
+  private readonly lastReadable = new Map<string, unknown>()
+  private stops: (() => void)[] = []
   private readonly phonePubkey: string
-  private askedForPairing = false
+  private running = false
+  private generation = 0
+  private pairingDelivered = false
+  private pairingInFlight = false
 
   constructor(private readonly opts: SyncOptions) {
     this.phonePubkey = getPublicKey(opts.phoneSecret)
   }
 
   async start(): Promise<void> {
+    if (this.running) return
+    this.running = true
+    const generation = ++this.generation
     const cached = await this.opts.cache.loadEvents().catch(() => [])
+    // Si se paró (o se volvió a arrancar) mientras se leía lo guardado, no abrir nada.
+    if (!this.running || generation !== this.generation) return
     for (const event of cached) this.keep(event)
     this.recompute()
     const { relays, admin } = this.opts
-    this.stops.push(
+    this.stops = [
       relays.subscribe({ kinds: [KIND.deviceKey], authors: [admin], '#p': [this.phonePubkey] }, (e) => this.receive(e)),
       relays.subscribe({ kinds: [...ITEM_KINDS], authors: [admin] }, (e) => this.receive(e)),
-    )
+    ]
   }
 
   stop(): void {
+    this.running = false
+    this.generation++
     for (const stop of this.stops.splice(0)) stop()
   }
 
   private receive(event: Event): void {
-    // Los relays ya verifican la firma; además solo vale lo que firmó el admin.
-    if (event.pubkey !== this.opts.admin || !this.keep(event)) return
+    if (!this.keep(event)) return
     void this.opts.cache.saveEvent(event).catch(() => undefined)
     this.recompute()
   }
 
+  // Solo vale lo que firmó el admin, de los kinds esperados (no se confía en el filtro del relay).
+  private accepts(event: Event): boolean {
+    if (event.pubkey !== this.opts.admin) return false
+    if (event.kind === KIND.deviceKey) return dTag(event) === this.phonePubkey
+    return (ITEM_KINDS as readonly number[]).includes(event.kind)
+  }
+
   // true si el evento es más nuevo que lo que había para su dirección.
   private keep(event: Event): boolean {
-    if (event.pubkey !== this.opts.admin) return false
+    if (!this.accepts(event)) return false
     const current = this.latest.get(addressOf(event))
     const isNewer =
       !current ||
@@ -92,6 +111,7 @@ export class ContentSync {
   private recompute(): void {
     const key = this.contentKey()
     if (!key) {
+      this.lastReadable.clear()
       this.opts.onChange({ status: 'waiting', code: pairingCode(this.phonePubkey) })
       this.askForPairing()
       return
@@ -101,30 +121,52 @@ export class ContentSync {
     this.opts.onChange({ status: 'ready', content, images, contentKey: key })
   }
 
+  private readItem(key: Uint8Array, event: Event): unknown {
+    const address = addressOf(event)
+    try {
+      const value = openItem(key, event.content)
+      this.lastReadable.set(address, value)
+      return value
+    } catch {
+      // Cifrado con una clave que no tenemos: lo último legible, o nada si nunca se pudo leer.
+      return this.lastReadable.get(address)
+    }
+  }
+
   private openItems(key: Uint8Array) {
     let profile = DEFAULT_PROFILE
     const envelopes: ItemEnvelope[] = []
     let latestCreatedAt = 0
     for (const event of this.latest.values()) {
       if (!(ITEM_KINDS as readonly number[]).includes(event.kind)) continue
+      const value = this.readItem(key, event)
+      if (value === undefined) continue
       try {
-        const value = openItem(key, event.content)
         if (event.kind === KIND.profile) profile = parseProfile(value)
         else envelopes.push(parseEnvelope(event.kind, value))
         latestCreatedAt = Math.max(latestCreatedAt, event.created_at)
       } catch {
-        // Cifrado con otra clave (vieja) o mal formado: se ignora.
+        // Mal formado: se ignora.
       }
     }
     return { profile, envelopes, latestCreatedAt }
   }
 
-  // Una vez por apertura: "quiero acceso" (reemplazable, así no se acumulan pedidos).
+  // "Quiero acceso" (reemplazable, así no se acumulan pedidos). Se reintenta en cada
+  // arranque hasta que llegue a suficientes relays.
   private askForPairing(): void {
-    if (this.askedForPairing) return
-    this.askedForPairing = true
+    if (this.pairingDelivered || this.pairingInFlight) return
+    this.pairingInFlight = true
     const now = this.opts.now?.() ?? Math.floor(Date.now() / 1000)
     const request = finalizeEvent(pairingRequestTemplate(this.opts.admin, now), this.opts.phoneSecret)
-    void this.opts.relays.publish(request).catch(() => undefined)
+    void this.opts.relays
+      .publish(request)
+      .then((result) => {
+        this.pairingDelivered = publishedEnough(result)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.pairingInFlight = false
+      })
   }
 }

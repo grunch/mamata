@@ -47,6 +47,11 @@ App web (PWA) para que una persona mayor vea **mensajes, recordatorios y tarjeta
 - **El link de vinculación** (`https://mamata.live/#npub=…`) **no tiene nada secreto.** Sin tu aprobación, nadie ve el contenido.
 - **La nsec del admin es la llave de todo:** quien la tenga puede publicar en la app. Usá **una clave dedicada a Mamata**, no tu identidad personal de Nostr, y guardala en un gestor de contraseñas.
 - **Si perdés la nsec**, perdés la posibilidad de editar lo publicado. Empezás de nuevo con una clave nueva y volvés a vincular el teléfono.
+- **Un teléfono ya vinculado ignora links de otro admin.** Para cambiar de admin hay que borrar los datos de la app en ese teléfono.
+- **Al aprobar, compará el código de 6 números con el que muestra el teléfono en ese momento.** Si dos pedidos tienen el mismo código, el panel los marca como posible engaño y no deja aprobarlos.
+- **Límites de "Quitar acceso":**
+  - lo que ese teléfono ya vio (incluidos los códigos de las gift cards) lo pudo haber guardado; consideralo expuesto;
+  - si un relay le oculta el aviso de "sin acceso", el teléfono revocado sigue mostrando lo último que tenía, pero no puede leer nada nuevo.
 
 ---
 
@@ -75,7 +80,7 @@ App web (PWA) para que una persona mayor vea **mensajes, recordatorios y tarjeta
 ### 3. Vincular el teléfono
 
 1. En el panel, entrá a **📱 Vincular teléfono** y escaneá el QR con el teléfono, o mandale el link.
-2. El teléfono muestra **"Esperando que tu familiar te habilite"** y un **código de 4 números**.
+2. El teléfono muestra **"Esperando que tu familiar te habilite"** y un **código de 6 números**.
 3. En el panel aparece **"Teléfono · código XXXX"**. Si el código coincide, tocá **Aprobar**.
 4. En segundos aparece todo en el teléfono. Instalá la app: **⋮ → Agregar a la pantalla de inicio**.
 

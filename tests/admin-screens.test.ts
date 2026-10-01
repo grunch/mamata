@@ -237,11 +237,13 @@ describe('trash section', () => {
 })
 
 describe('link section', () => {
-  const device = (status: Device['status'], code = '4821'): Device => ({
+  const device = (status: Device['status'], code = '482113', suspicious = false): Device => ({
     pubkey: getPublicKey(generateSecretKey()),
     code,
     status,
-    requestedAt: 1,
+    requestedAt: Date.parse('2026-10-01T14:58:00.000Z') / 1000,
+    suspicious,
+    keyAt: 0,
   })
 
   it('shows the public pairing link with the admin npub and copies it', async () => {
@@ -259,18 +261,33 @@ describe('link section', () => {
   })
 
   it('shows pending phones with their code and approves them', () => {
-    const pending = device('pending', '4821')
+    const pending = device('pending', '482113')
     const ctx = makeCtx(sampleContent(), [pending])
     const el = linkSection(ctx)
 
-    expect(text(el)).toContain('4821')
+    expect(text(el)).toContain('482113')
     button(el, 'Aprobar').click()
 
     expect(ctx.approve).toHaveBeenCalledWith(pending.pubkey)
   })
 
+  it('does not let you approve two phones that share a code', () => {
+    const ctx = makeCtx(sampleContent(), [device('pending', '482113', true), device('pending', '482113', true)])
+    const el = linkSection(ctx)
+
+    expect(text(el)).toContain('Hay otro pedido con el mismo código')
+    expect(el.querySelectorAll('button')).not.toContain(expect.objectContaining({ textContent: 'Aprobar' }))
+    expect([...el.querySelectorAll('button')].some((b) => b.textContent === 'Aprobar')).toBe(false)
+  })
+
+  it('says when each phone asked for access', () => {
+    const el = linkSection(makeCtx(sampleContent(), [device('pending')]))
+
+    expect(text(el)).toContain('Pidió acceso hoy a las 11:58')
+  })
+
   it('removes access to an approved phone only after confirming', () => {
-    const approved = device('approved', '1234')
+    const approved = device('approved', '123456')
     const ctx = makeCtx(sampleContent(), [approved])
     vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     const el = linkSection(ctx)

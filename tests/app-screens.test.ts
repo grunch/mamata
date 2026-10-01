@@ -472,7 +472,7 @@ describe('settings', () => {
     document.body.append(el)
 
     expect(text(el)).toMatch(/npub1[02-9ac-hj-np-z]{58}/)
-    expect(el.querySelector('.pairing-code')?.textContent).toMatch(/^\d{4}$/)
+    expect(el.querySelector('.pairing-code')?.textContent).toMatch(/^\d{6}$/)
     expect(text(el)).not.toContain('nsec1')
 
     vi.spyOn(window, 'confirm').mockReturnValue(true)

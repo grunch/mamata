@@ -54,11 +54,15 @@ function screenFor(route: Route, ctx: AppContext, phoneSecret: Uint8Array): HTML
 }
 
 // Guarda de quién aceptar contenido (la npub del link) y la saca de la barra de direcciones.
+// Un teléfono ya vinculado ignora links de otro admin: si no, cualquiera podría mandarle
+// un link y pasar a publicarle mensajes. Para cambiar de admin hay que borrar los datos de la app.
 async function adoptAdminFromLink(store: LocalStore): Promise<void> {
-  const admin = adminFromHash(location.hash)
-  if (!admin) return
+  const linked = adminFromHash(location.hash)
+  if (!linked) return
   history.replaceState(null, '', `${location.pathname}#/`)
-  await store.setAdminPubkey(admin)
+  const current = await store.getAdminPubkey()
+  if (current && current !== linked) return
+  await store.setAdminPubkey(linked)
 }
 
 // Imágenes: se bajan de Blossom por hash, se descifran y se muestran como blob: URL.
@@ -158,8 +162,10 @@ async function boot(root: HTMLElement): Promise<void> {
   const onChange = (next: SyncState) => {
     const wasReady = phase.kind === 'ready'
     if (next.status === 'waiting') {
+      // El foco se mueve solo al entrar a la espera, no con cada evento que llega.
+      const alreadyWaiting = phase.kind === 'waiting' && phase.code === next.code
       phase = { kind: 'waiting', code: next.code }
-      return render(true)
+      return render(!alreadyWaiting)
     }
     images.update(next.images, next.contentKey)
     phase = { kind: 'ready' }

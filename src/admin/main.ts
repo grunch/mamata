@@ -12,7 +12,7 @@ import { LocalSigner, Nip07Signer, SignerError, parseSecretKey, type Signer, typ
 import { SECTIONS, type AdminContext, type AdminSession, type Section } from './context.ts'
 import { approveDevice, loadDevices, revokeDevice, type Device } from './devices.ts'
 import { newId } from './draft.ts'
-import { changedEntries, findConflicts, loadAdmin, publishEntries, type AdminState, type Entry } from './nostr-admin.ts'
+import { allEntries, changedEntries, findConflicts, loadAdmin, publishEntries, type AdminState, type Entry } from './nostr-admin.ts'
 import { cardsSection } from './screens/cards.ts'
 import { linkSection } from './screens/link.ts'
 import { messagesSection } from './screens/messages.ts'
@@ -56,8 +56,8 @@ interface Panel {
   devices: Device[]
   // Imágenes elegidas que todavía no se subieron (sin cifrar).
   pending: Map<string, Bytes>
-  // Cambios que no llegaron a suficientes relays.
-  unpublished: Entry[]
+  // Ítems cuyos cambios no llegaron a suficientes relays.
+  unpublished: Pick<Entry, 'kind' | 'd'>[]
   publishing: boolean
 }
 
@@ -140,7 +140,7 @@ function statusBar(session: AdminSession, onRetry: () => void): HTMLElement {
   ])
 }
 
-const sameEntry = (a: Entry, b: Entry) => a.kind === b.kind && a.d === b.d
+const sameEntry = (a: Pick<Entry, 'kind' | 'd'>, b: Pick<Entry, 'kind' | 'd'>) => a.kind === b.kind && a.d === b.d
 const nowSeconds = () => Math.floor(Date.now() / 1000)
 
 async function imagePreview(panel: Panel, id: string): Promise<string | null> {
@@ -153,11 +153,18 @@ async function imagePreview(panel: Panel, id: string): Promise<string | null> {
   return plain ? URL.createObjectURL(new Blob([plain], { type: sniffImageType(plain) })) : null
 }
 
-// Publica cambios: avisa si alguien publicó antes, sube imágenes y deja anotado lo que falló.
-async function publishChanges(panel: Panel, entries: Entry[]): Promise<string> {
+type EntryKey = Pick<Entry, 'kind' | 'd'>
+const hasKey = (keys: EntryKey[], entry: EntryKey) => keys.some((k) => sameEntry(k, entry))
+
+// Publica los ítems indicados con el valor que tienen *ahora* (no el de cuando se guardaron):
+// así dos ediciones seguidas o un "Reintentar" nunca publican una versión vieja.
+async function publishChanges(panel: Panel, keys: EntryKey[]): Promise<string> {
+  const entries = allEntries(panel.state.content, panel.state.images).filter((e) => hasKey(keys, e))
   const conflicts = await findConflicts(panel.relays, panel.admin, entries, panel.state.versions)
   if (conflicts.length > 0 && !window.confirm(`${conflicts.length} cambio(s) ya los modificó alguien más (o vos en otro navegador). ¿Publicar tu versión encima?`)) {
-    panel.state = await loadAdmin(panel.relays, panel.signer, DEFAULT_NAMES)
+    const { userName, adminName } = panel.state.content
+    panel.state = await loadAdmin(panel.relays, panel.signer, { userName, adminName })
+    panel.unpublished = panel.unpublished.filter((u) => !hasKey(keys, u))
     return 'Cargué la versión más nueva. Revisá y volvé a guardar.'
   }
   const report = await publishEntries(entries, panel.pending, {
@@ -170,17 +177,38 @@ async function publishChanges(panel: Panel, entries: Entry[]): Promise<string> {
     upload: (blobs) => uploadBlobs(blobs, panel.signer, BLOSSOM_SERVERS),
   })
   for (const id of report.images.keys()) panel.pending.delete(id)
-  const failed = entries.filter((e) => report.failed.some((f) => f.kind === e.kind && f.d === e.d))
+  const failed = entries.filter((e) => report.failed.some((f) => sameEntry(f, e)))
   panel.state = {
     ...panel.state,
     images: new Map([...panel.state.images, ...report.images]),
     versions: new Map([...panel.state.versions, ...report.versions]),
-    isNew: panel.state.isNew && failed.length === entries.length,
+    isNew: panel.state.isNew && !report.versions.has(`${KIND.adminKey}:admin`),
   }
-  panel.unpublished = [...panel.unpublished.filter((u) => !entries.some((e) => sameEntry(e, u))), ...failed]
+  panel.unpublished = [...panel.unpublished.filter((u) => !hasKey(keys, u)), ...failed]
   return failed.length > 0
     ? 'Algunos cambios no llegaron a suficientes relays. Tocá "Reintentar".'
     : 'Publicado. El teléfono lo ve en segundos.'
+}
+
+// Quitar acceso: el resultado se aplica sobre el estado actual, sin pisar lo editado.
+async function revokeAccess(panel: Panel, devicePubkey: string): Promise<string> {
+  const holders = panel.devices.filter((d) => d.status === 'approved').map((d) => ({ pubkey: d.pubkey, keyAt: d.keyAt }))
+  const next = await revokeDevice(
+    {
+      relays: panel.relays,
+      signer: panel.signer,
+      state: panel.state,
+      now: nowSeconds,
+      upload: (blobs) => uploadBlobs(blobs, panel.signer, BLOSSOM_SERVERS),
+      download: (sha256) => downloadBlob(sha256, BLOSSOM_SERVERS),
+    },
+    devicePubkey,
+    holders,
+  )
+  panel.state = { ...panel.state, contentKey: next.contentKey, images: next.images, versions: next.versions, isNew: false }
+  if (next.keyFailures.length > 0) return 'Se quitó el acceso, pero a algún teléfono no le llegó la clave nueva. Aprobalo de nuevo.'
+  if (next.lostImages.length > 0) return `Se quitó el acceso. ${next.lostImages.length} foto(s) ya no estaban y hay que volver a subirlas.`
+  return 'Listo: ese teléfono ya no ve el contenido.'
 }
 
 function startPanel(panel: Panel): void {
@@ -196,15 +224,15 @@ function startPanel(panel: Panel): void {
     unpublished: panel.unpublished.length,
   })
 
-  // Las publicaciones van de a una, en el orden en que se guardaron.
-  const enqueue = (entries: Entry[]) => {
+  // Publicaciones y "quitar acceso" van de a uno, en el orden en que se pidieron.
+  const enqueue = (job: () => Promise<string>, onError?: () => void) => {
     queue = queue.then(async () => {
       panel.publishing = true
       render()
       try {
-        toast(await publishChanges(panel, entries))
+        toast(await job())
       } catch (error) {
-        panel.unpublished = [...panel.unpublished.filter((u) => !entries.some((e) => sameEntry(e, u))), ...entries]
+        onError?.()
         toast(explain(error))
       } finally {
         panel.publishing = false
@@ -212,6 +240,13 @@ function startPanel(panel: Panel): void {
       }
     })
   }
+  const enqueuePublish = (keys: EntryKey[]) =>
+    enqueue(
+      () => publishChanges(panel, keys),
+      () => {
+        panel.unpublished = [...panel.unpublished.filter((u) => !hasKey(keys, u)), ...keys]
+      },
+    )
 
   const ctx: AdminContext = {
     get session() {
@@ -222,7 +257,7 @@ function startPanel(panel: Panel): void {
       const entries = changedEntries(panel.state.content, next, panel.state.images)
       panel.state = { ...panel.state, content: next }
       render()
-      if (entries.length > 0) enqueue(entries)
+      if (entries.length > 0) enqueuePublish(entries)
     },
     addImage(bytes) {
       const id = newId()
@@ -239,44 +274,26 @@ function startPanel(panel: Panel): void {
     toast,
     rerender: () => render(),
     async approve(devicePubkey) {
-      const result = await approveDevice(panel.relays, panel.signer, panel.state.contentKey, devicePubkey, nowSeconds())
+      const previous = panel.devices.find((d) => d.pubkey === devicePubkey)?.keyAt ?? 0
+      const createdAt = Math.max(nowSeconds(), previous + 1)
+      const result = await approveDevice(panel.relays, panel.signer, panel.state.contentKey, devicePubkey, createdAt)
       toast(publishedEnough(result) ? 'Listo: el teléfono ya puede ver todo.' : 'No llegó a suficientes relays. Probá de nuevo.')
       await ctx.refreshDevices()
     },
     async revoke(devicePubkey) {
-      panel.publishing = true
-      render()
-      try {
-        const approved = panel.devices.filter((d) => d.status === 'approved').map((d) => d.pubkey)
-        const next = await revokeDevice(
-          {
-            relays: panel.relays,
-            signer: panel.signer,
-            state: panel.state,
-            now: nowSeconds,
-            upload: (blobs) => uploadBlobs(blobs, panel.signer, BLOSSOM_SERVERS),
-            download: (sha256) => downloadBlob(sha256, BLOSSOM_SERVERS),
-          },
-          devicePubkey,
-          approved,
-        )
-        panel.state = next
+      enqueue(async () => {
+        const message = await revokeAccess(panel, devicePubkey)
         imageUrls.clear()
-        toast(next.failed.length > 0 ? 'Se quitó el acceso, pero algunos ítems no se volvieron a publicar.' : 'Listo: ese teléfono ya no ve el contenido.')
-      } catch (error) {
-        toast(explain(error))
-      } finally {
-        panel.publishing = false
-        await ctx.refreshDevices()
-      }
+        panel.devices = await loadDevices(panel.relays, panel.admin).catch(() => panel.devices)
+        return message
+      })
     },
     async refreshDevices() {
       panel.devices = await loadDevices(panel.relays, panel.admin).catch(() => panel.devices)
       render()
     },
     async retry() {
-      const entries = panel.unpublished
-      if (entries.length > 0) enqueue(entries)
+      if (panel.unpublished.length > 0) enqueuePublish(panel.unpublished)
     },
     logout() {
       if (panel.unpublished.length > 0 && !window.confirm('Hay cambios sin publicar que se van a perder. ¿Salir igual?')) return

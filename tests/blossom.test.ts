@@ -1,7 +1,7 @@
 import { generateSecretKey } from 'nostr-tools/pure'
 import { verifyEvent } from 'nostr-tools/pure'
 import { describe, expect, it, vi } from 'vitest'
-import { BlossomError, downloadBlob, sha256Hex, uploadAuthTemplate, uploadBlobs } from '../src/shared/nostr/blossom.ts'
+import { BlossomError, MAX_BLOB_BYTES, downloadBlob, sha256Hex, uploadAuthTemplate, uploadBlobs } from '../src/shared/nostr/blossom.ts'
 import { LocalSigner } from '../src/shared/nostr/signer.ts'
 
 const A = 'https://a.example'
@@ -109,6 +109,12 @@ describe('downloadBlob', () => {
     const fetchFn = vi.fn(async () => new Response('no', { status: 404 }))
 
     await expect(downloadBlob('a'.repeat(64), [A, B], fetchFn)).rejects.toBeInstanceOf(BlossomError)
+  })
+
+  it('refuses files bigger than an image could be (a server could try to fill the memory)', async () => {
+    const huge = vi.fn(async () => new Response('x', { headers: { 'Content-Length': String(MAX_BLOB_BYTES + 1) } }))
+
+    await expect(downloadBlob('a'.repeat(64), [A], huge)).rejects.toBeInstanceOf(BlossomError)
   })
 
   it('rejects hashes that are not sha256 hex', async () => {

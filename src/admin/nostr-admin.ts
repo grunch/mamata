@@ -41,11 +41,19 @@ export interface Entry {
 }
 
 const PROFILE_D = 'perfil'
+const ADMIN_KEY_D = 'admin'
 const versionKey = (kind: number, d: string): string => `${kind}:${d}`
+
+export class AdminKeyExistsError extends Error {
+  constructor() {
+    super('Ya hay contenido publicado con esta clave de admin. Recargá el panel para verlo.')
+    this.name = 'AdminKeyExistsError'
+  }
+}
 
 export async function loadAdmin(relays: AdminRelays, signer: Signer, names: Profile): Promise<AdminState> {
   const admin = await signer.getPublicKey()
-  const [keyEvent] = latestByAddress(await relays.query({ kinds: [KIND.adminKey], authors: [admin], '#d': ['admin'] }))
+  const [keyEvent] = latestByAddress(await relays.query({ kinds: [KIND.adminKey], authors: [admin], '#d': [ADMIN_KEY_D] }))
   if (!keyEvent) {
     const content = emptyContent(names.userName, names.adminName)
     return { content, images: new Map(), versions: new Map(), contentKey: generateContentKey(), isNew: true }
@@ -53,7 +61,7 @@ export async function loadAdmin(relays: AdminRelays, signer: Signer, names: Prof
 
   const contentKey = await openAdminKey(signer, keyEvent)
   const events = latestByAddress(await relays.query({ kinds: [...ITEM_KINDS], authors: [admin] }))
-  const versions = new Map<string, number>()
+  const versions = new Map<string, number>([[versionKey(KIND.adminKey, ADMIN_KEY_D), keyEvent.created_at]])
   const envelopes: ItemEnvelope[] = []
   let profile = names
   let latest = 0
@@ -140,12 +148,28 @@ async function publishOne(event: Event, ctx: PublishContext): Promise<string | n
   return publishedEnough(result) ? null : result.failed.map((f) => `${f.relay}: ${f.reason}`).join('; ') || 'sin relays'
 }
 
+// Copia de la clave de contenido para el admin (36012). Antes de escribirla se vuelve a
+// buscar: si ya existe (otro navegador, o un relay que no respondió al cargar), no se pisa.
+async function publishAdminKey(ctx: PublishContext, report: PublishReport): Promise<string | null> {
+  const admin = await ctx.signer.getPublicKey()
+  const existing = await ctx.relays.query({ kinds: [KIND.adminKey], authors: [admin], '#d': [ADMIN_KEY_D] })
+  const key = versionKey(KIND.adminKey, ADMIN_KEY_D)
+  const known = ctx.versions?.get(key) ?? 0
+  if (existing.some((e) => e.created_at > known)) throw new AdminKeyExistsError()
+  const createdAt = Math.max(ctx.now(), known + 1)
+  const reason = await publishOne(await ctx.signer.signEvent(await adminKeyTemplate(ctx.signer, ctx.contentKey, createdAt)), ctx)
+  if (!reason) report.versions.set(key, createdAt)
+  return reason
+}
+
 export async function publishEntries(entries: Entry[], pendingImages: Map<string, Bytes>, ctx: PublishContext): Promise<PublishReport> {
   const report: PublishReport = { versions: new Map(), images: new Map(), failed: [] }
   if (ctx.isNew) {
-    const keyEvent = await ctx.signer.signEvent(await adminKeyTemplate(ctx.signer, ctx.contentKey, ctx.now()))
-    const reason = await publishOne(keyEvent, ctx)
-    if (reason) return { ...report, failed: entries.map((e) => ({ kind: e.kind, d: e.d, reason })) }
+    const reason = await publishAdminKey(ctx, report)
+    if (reason) {
+      const failed = [{ kind: KIND.adminKey, d: ADMIN_KEY_D, reason }, ...entries.map((e) => ({ kind: e.kind, d: e.d, reason }))]
+      return { ...report, failed }
+    }
   }
 
   report.images = await uploadImages(entries, pendingImages, ctx)

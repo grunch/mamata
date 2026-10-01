@@ -41,7 +41,7 @@ export function setupScreen(onSubmit: (result: SetupResult) => Promise<string | 
     h('h1', { text: 'Panel de Mamata' }),
     h('p', { text: 'Para publicar hace falta firmar con tu clave de Nostr.' }),
     h('form', { class: 'admin-form', on: { submit: submitNsec } }, [
-      field('Clave privada (nsec)', nsec, 'Se guarda solo en este navegador.'),
+      field('Clave privada (nsec)', nsec, 'Se guarda solo en este navegador. Más seguro: usar una extensión (abajo).'),
       h('button', { class: 'small-button primary', text: 'Entrar con la nsec', attrs: { type: 'submit' } }),
       h('p', { class: 'hint', text: 'O, si tenés una extensión como nos2x:' }),
       h('button', {

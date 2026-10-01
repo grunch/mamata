@@ -20,7 +20,7 @@
 
 ### Vincular e instalar
 - [ ] Abrir `https://mamata.live/` sin link: dice "Para ver tus cosas, pedile el link a tu familiar."
-- [ ] Abrir el link de vinculación (o escanear el QR): el teléfono muestra "Esperando que tu familiar te habilite" y un código de 4 números; la npub ya no se ve en la barra de direcciones.
+- [ ] Abrir el link de vinculación (o escanear el QR): el teléfono muestra "Esperando que tu familiar te habilite" y un código de 6 números; la npub ya no se ve en la barra de direcciones.
 - [ ] En el panel aparece "Teléfono · código XXXX" con el mismo código. Aprobar: en segundos el teléfono muestra la bienvenida.
 - [ ] Instalar desde la bienvenida o con ⋮ → "Agregar a la pantalla de inicio". El ícono aparece y la app abre a pantalla completa.
 - [ ] Cerrar la app del todo y volver a abrirla desde el ícono: entra directo al inicio, sin pedir nada.

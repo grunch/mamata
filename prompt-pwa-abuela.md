@@ -36,7 +36,7 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
 
   - Cada ítem es su propio evento reemplazable: editar = publicar una versión nueva con el mismo `d`.
   - Borrar, archivar o pausar = nueva versión con un campo de estado (papelera recuperable). Nunca se depende de que un relay borre.
-- **Vinculación**: el teléfono abre el link, genera sus claves, publica un 36010 y muestra un **código de 4 dígitos** derivado de su pubkey. El panel muestra el pedido con el mismo código; el admin lo compara y toca **Aprobar** (publica el 36011). **Quitar acceso** a un teléfono = nueva clave de contenido, volver a cifrar y publicar todo, y mandar 36011 solo a los teléfonos que quedan.
+- **Vinculación**: el teléfono abre el link, genera sus claves, publica un 36010 y muestra un **código de 6 dígitos** derivado de su pubkey. El panel muestra el pedido con el mismo código; el admin lo compara y toca **Aprobar** (publica el 36011). **Quitar acceso** a un teléfono = nueva clave de contenido, volver a cifrar y publicar todo, y mandar 36011 solo a los teléfonos que quedan.
 - **Imágenes**: comprimidas en el navegador, cifradas con AES-GCM (clave derivada de la clave de contenido) y subidas a **Blossom** (`nostr.download`, `blossom.yakihonne.com`; aceptan archivos cifrados) con una autorización kind 24242 firmada por el admin. La app las baja por SHA-256 y verifica el hash antes de descifrar.
 - **Datos del usuario** (leídos, hechos, saldos anotados): solo en su teléfono (IndexedDB). El admin no los ve.
 - **Sin notificaciones push** con la app cerrada. Con la app abierta, lo nuevo aparece en segundos (suscripción en vivo).
@@ -104,7 +104,7 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
   - **Mensajes**: crear, editar y archivar. Vista previa de cómo lo va a ver el usuario.
   - **Recordatorios**: crear, editar, pausar y borrar.
   - **Tarjetas de regalo**: alta, edición y baja; subir imagen (comprimir y redimensionar en el navegador antes de cifrar y subir); elegir proveedor; código de canje para armar la URL de consulta (o pegar directamente el link de la gift card virtual); monto inicial y vencimiento; cargar un saldo corregido.
-  - **Vincular teléfono**: link y QR con la npub del admin; pedidos pendientes con su código de 4 dígitos (Aprobar / Rechazar); teléfonos aprobados con "Quitar acceso"; estado de los relays.
+  - **Vincular teléfono**: link y QR con la npub del admin; pedidos pendientes con su código de 6 dígitos (Aprobar; los pedidos que comparten código se marcan como sospechosos y no se pueden aprobar); teléfonos aprobados con "Quitar acceso"; estado de los relays.
 - Todo lo que el admin borra pasa primero a una papelera recuperable (el evento queda con estado "en la papelera").
 - Cada cambio se publica al guardar (un evento por ítem), mostrando en cuántos relays quedó. Menos de 2 relays = error visible.
 - Antes de reemplazar un ítem, si en los relays hay una versión más nueva que la que se estaba editando, avisar y no pisarla sin confirmar.
@@ -129,7 +129,7 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
   - caché permanente para las imágenes de Blossom (se piden por SHA-256: nunca cambian).
 - Contenido: suscripción en vivo a los relays mientras la app está a la vista; al pasar a segundo plano se cierra y al volver se reabre. Lo último bueno de cada ítem queda en IndexedDB y **nunca se reemplaza por una versión más vieja** (`created_at`).
 - Si no hay conexión, mostrar un aviso suave: "Sin internet. Te muestro la última información guardada."
-- Si el teléfono todavía no fue aprobado (o se le quitó el acceso), mostrar en grande el código de 4 dígitos y "Esperando que [nombre del admin] te habilite". Nunca borrar lo que ya estaba guardado.
+- Si el teléfono todavía no fue aprobado (o se le quitó el acceso), mostrar en grande el código de 6 dígitos y "Esperando que [nombre del admin] te habilite". Nunca borrar lo que ya estaba guardado.
 - **Onboarding de una sola vez** al abrir el link de vinculación: pantalla grande de bienvenida y un banner o instrucciones simples para instalar la app en la pantalla de inicio.
 
 ## 7. Entregables

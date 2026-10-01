@@ -1,6 +1,6 @@
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure'
 import { describe, expect, it, vi } from 'vitest'
-import { approveDevice, loadDevices, revokeDevice } from '../src/admin/devices.ts'
+import { approveDevice, flagSuspicious, loadDevices, revokeDevice, type Device } from '../src/admin/devices.ts'
 import { allEntries, loadAdmin, publishEntries } from '../src/admin/nostr-admin.ts'
 import { decryptBytes, imageAad, type Bytes } from '../src/shared/crypto.ts'
 import { KIND } from '../src/shared/nostr/constants.ts'
@@ -55,7 +55,10 @@ describe('loadDevices', () => {
     await revokeDevice(
       { relays, signer, state, now: () => NOW + 10, upload: vi.fn(async () => []), download: vi.fn() },
       c.pubkey,
-      [b.pubkey, c.pubkey],
+      [
+        { pubkey: b.pubkey, keyAt: NOW },
+        { pubkey: c.pubkey, keyAt: NOW },
+      ],
     )
 
     const devices = await loadDevices(relays, admin)
@@ -64,6 +67,36 @@ describe('loadDevices', () => {
     expect(devices.find((d) => d.pubkey === b.pubkey)?.status).toBe('approved')
     expect(devices.find((d) => d.pubkey === c.pubkey)?.status).toBe('revoked')
     expect(devices[0]?.status).toBe('pending')
+  })
+
+  it('flags phones that share a code with another one (someone may be impersonating)', () => {
+    const device = (pubkey: string, code: string): Device => ({ pubkey, code, status: 'pending', requestedAt: 1, suspicious: false, keyAt: 0 })
+
+    const flagged = flagSuspicious([device('a', '123456'), device('b', '123456'), device('c', '654321')])
+
+    expect(flagged.map((d) => [d.pubkey, d.suspicious])).toEqual([
+      ['a', true],
+      ['b', true],
+      ['c', false],
+    ])
+  })
+
+  it('remembers when each phone last got a key event', async () => {
+    const { signer, admin, relays, state } = await adminWithContent()
+    const p = phone()
+    await approveDevice(relays, signer, state.contentKey, p.pubkey, NOW + 5)
+
+    const [device] = await loadDevices(relays, admin)
+
+    expect(device?.keyAt).toBe(NOW + 5)
+  })
+
+  it('asks the relays for a bounded number of pairing requests', async () => {
+    const { admin, relays } = await adminWithContent()
+
+    await loadDevices(relays, admin)
+
+    expect(relays.query).toHaveBeenCalledWith(expect.objectContaining({ kinds: [KIND.pairingRequest], limit: 50 }))
   })
 })
 
@@ -96,8 +129,8 @@ describe('revokeDevice', () => {
     )
 
     const next = await revokeDevice({ relays, signer, state, now: () => NOW + 10, upload, download }, remove.pubkey, [
-      keep.pubkey,
-      remove.pubkey,
+      { pubkey: keep.pubkey, keyAt: NOW },
+      { pubkey: remove.pubkey, keyAt: NOW },
     ])
 
     const latestKey = (pubkey: string) =>
@@ -118,7 +151,7 @@ describe('revokeDevice', () => {
     expect(Array.from(reloaded.contentKey)).toEqual(Array.from(next.contentKey))
   })
 
-  it('keeps going if an old image cannot be downloaded', async () => {
+  it('keeps going if an old image cannot be downloaded, and says which one was lost', async () => {
     const { signer, relays, state } = await adminWithContent()
     const download = vi.fn(async () => {
       throw new Error('no está')
@@ -131,5 +164,34 @@ describe('revokeDevice', () => {
     )
 
     expect(next.images.has('img2')).toBe(false)
+    expect(next.lostImages).toEqual(['img2'])
+  })
+
+  it('does not hand out keys nor revoke anything if republishing fails', async () => {
+    const { signer, state } = await adminWithContent()
+    const relays = memoryRelays([], { okCount: 1 })
+    const [keep, remove] = [phone(), phone()]
+
+    await expect(
+      revokeDevice({ relays, signer, state, now: () => NOW + 10, upload: vi.fn(async () => []), download: vi.fn() }, remove.pubkey, [
+        { pubkey: keep.pubkey, keyAt: NOW },
+        { pubkey: remove.pubkey, keyAt: NOW },
+      ]),
+    ).rejects.toThrow(/no se pudo/i)
+    expect(relays.stored.filter((e) => e.kind === KIND.deviceKey)).toEqual([])
+  })
+
+  it('never lets a revocation tie with the approval it replaces', async () => {
+    const { signer, relays, state } = await adminWithContent()
+    const p = phone()
+    await approveDevice(relays, signer, state.contentKey, p.pubkey, NOW)
+
+    await revokeDevice({ relays, signer, state, now: () => NOW, upload: vi.fn(async () => []), download: vi.fn() }, p.pubkey, [
+      { pubkey: p.pubkey, keyAt: NOW },
+    ])
+
+    const keys = relays.stored.filter((e) => e.kind === KIND.deviceKey)
+    expect(keys.at(-1)!.created_at).toBeGreaterThan(keys[0]!.created_at)
+    expect(openDeviceKey(p.secret, (await relays.query({ kinds: [KIND.deviceKey] }))[0]!)).toBeNull()
   })
 })

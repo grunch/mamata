@@ -97,12 +97,12 @@ describe('pairing', () => {
     expect(adminFromHash('')).toBeNull()
   })
 
-  it('derives a stable 4-digit code from a pubkey', () => {
+  it('derives a stable 6-digit code from a pubkey', () => {
     const code = pairingCode(adminHex)
 
-    expect(code).toMatch(/^\d{4}$/)
+    expect(code).toMatch(/^\d{6}$/)
     expect(pairingCode(adminHex)).toBe(code)
-    expect(pairingCode(getPublicKey(generateSecretKey()))).toMatch(/^\d{4}$/)
+    expect(pairingCode(getPublicKey(generateSecretKey()))).toMatch(/^\d{6}$/)
   })
 })
 

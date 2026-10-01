@@ -123,6 +123,21 @@ test.describe('app del usuario', () => {
     expect(relay.find({ kinds: [KIND.pairingRequest] })[0]?.tags).toContainEqual(['p', admin.pubkey])
   })
 
+  test('un link de otro admin no cambia a quién le hace caso el teléfono', async ({ page }) => {
+    const relay = await FakeRelay.attach(page)
+    const admin = testAdmin()
+    const intruder = testAdmin()
+    await page.goto(admin.link)
+    await waitForPairingRequest(relay)
+
+    await page.goto(intruder.link)
+    await page.reload()
+    await expect(page.getByText('Esperando que tu familiar te habilite.')).toBeVisible()
+
+    const asked = relay.find({ kinds: [KIND.pairingRequest] }).flatMap((e) => e.tags.filter((t) => t[0] === 'p').map((t) => t[1]))
+    expect(asked).not.toContain(intruder.pubkey)
+  })
+
   test('cuando el admin aprueba aparece todo, y lo nuevo llega en vivo', async ({ page }) => {
     const { relay, admin } = await pairedPhone(page)
 

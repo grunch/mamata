@@ -130,7 +130,7 @@ describe('publishEntries', () => {
 
     const report = await publishEntries(entries, new Map(), ctxFor(relays, signer, state))
 
-    expect(report.failed.map((f) => f.d)).toEqual(['perfil'])
+    expect(report.failed.map((f) => f.d)).toEqual(['admin', 'perfil'])
   })
 
   it('on the first publication stores a copy of the content key so another browser can open the panel', async () => {
@@ -146,6 +146,17 @@ describe('publishEntries', () => {
     expect(reloaded.isNew).toBe(false)
     expect(Array.from(reloaded.contentKey)).toEqual(Array.from(state.contentKey))
     expect(reloaded.content.userName).toBe('Marta')
+  })
+
+  it('refuses to overwrite a content key that appeared on the relays meanwhile', async () => {
+    const { signer, relays, state } = await publishedState()
+    // Otro navegador del admin publicó primero (o un relay no respondió al cargar).
+    relays.stored.push(await signer.signEvent(await adminKeyTemplate(signer, generateContentKey(), NOW - 5)))
+
+    await expect(
+      publishEntries([{ kind: KIND.profile, d: 'perfil', value: { userName: 'Marta', adminName: 'Fer' } }], new Map(), ctxFor(relays, signer, state)),
+    ).rejects.toThrow(/ya hay contenido publicado/i)
+    expect(relays.stored.filter((e) => e.kind === KIND.adminKey)).toHaveLength(1)
   })
 })
 

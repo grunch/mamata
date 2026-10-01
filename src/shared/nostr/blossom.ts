@@ -8,6 +8,8 @@ import type { Signer } from './signer.ts'
 const AUTH_KIND = 24242
 const AUTH_TTL_SECONDS = 60 * 60
 const SHA256_HEX = /^[0-9a-f]{64}$/
+// Las fotos se achican antes de subirlas (≈ 300 KB): nada legítimo pesa más que esto.
+export const MAX_BLOB_BYTES = 10 * 1024 * 1024
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>
 
@@ -97,7 +99,9 @@ export async function downloadBlob(
     try {
       const response = await fetchFn(`${server}/${sha256}`)
       if (!response.ok) continue
+      if (Number(response.headers.get('Content-Length') ?? 0) > MAX_BLOB_BYTES) continue
       const bytes = new Uint8Array(await response.arrayBuffer())
+      if (bytes.length > MAX_BLOB_BYTES) continue
       if ((await sha256Hex(bytes)) === sha256) return bytes
     } catch {
       // Probar con el siguiente servidor.

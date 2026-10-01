@@ -1,7 +1,8 @@
 // Vincular teléfonos: link público con la npub del admin, pedidos pendientes con su
-// código de 4 dígitos, teléfonos aprobados y quitar acceso.
+// código de 6 dígitos, teléfonos aprobados y quitar acceso.
 import QRCode from 'qrcode'
 import { h } from '../../app/ui.ts'
+import { formatNoted } from '../../shared/dates.ts'
 import { linkFor } from '../../shared/nostr/pairing.ts'
 import type { AdminContext } from '../context.ts'
 import type { Device } from '../devices.ts'
@@ -20,13 +21,20 @@ function deviceRow(ctx: AdminContext, device: Device): HTMLLIElement {
     )
     if (ok) void ctx.revoke(device.pubkey)
   }
+  const askedAt = formatNoted(new Date(device.requestedAt * 1000), new Date(ctx.now()))
+  // Con dos pedidos del mismo código, uno puede ser un impostor: no se deja aprobar ninguno.
+  const canApprove = device.status !== 'approved' && !device.suspicious
   return h('li', {}, [
     h('p', { class: 'item-title', text: `Teléfono · código ${device.code}` }),
-    h('p', { class: 'hint', text: STATUS_LABEL[device.status] }),
-    device.status === 'pending' &&
-      h('p', { class: 'hint', text: 'Aprobalo solo si el código coincide con el que muestra el teléfono.' }),
+    h('p', { class: 'hint', text: `${STATUS_LABEL[device.status]} · Pidió acceso ${askedAt}` }),
+    device.suspicious &&
+      h('p', {
+        class: 'warning',
+        text: 'Hay otro pedido con el mismo código: alguien podría estar haciéndose pasar por el teléfono. No apruebes ninguno; borrá los datos de la app en el teléfono y volvé a abrir el link.',
+      }),
+    canApprove && h('p', { class: 'hint', text: 'Aprobalo solo si el código coincide con el que muestra el teléfono ahora.' }),
     h('div', { class: 'row' }, [
-      device.status !== 'approved' && smallButton('Aprobar', () => void ctx.approve(device.pubkey), 'primary'),
+      canApprove && smallButton('Aprobar', () => void ctx.approve(device.pubkey), 'primary'),
       device.status === 'approved' && smallButton('Quitar acceso', revoke, 'danger'),
     ]),
   ])
@@ -55,7 +63,7 @@ export function linkSection(ctx: AdminContext): HTMLElement {
     h('h2', { text: 'Vincular teléfono' }),
     h('ol', { class: 'steps' }, [
       h('li', { text: 'En el teléfono, abrí Chrome y escaneá el código (o mandale el link).' }),
-      h('li', { text: 'El teléfono muestra un código de 4 números. Aprobalo acá si coincide.' }),
+      h('li', { text: 'El teléfono muestra un código de 6 números. Aprobalo acá si coincide.' }),
       h('li', { text: 'Para instalarla: tres puntitos ⋮ → "Agregar a la pantalla de inicio".' }),
     ]),
     canvas,
