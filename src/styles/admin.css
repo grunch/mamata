@@ -195,3 +195,15 @@ canvas {
   align-self: center;
   max-width: 100%;
 }
+
+.new-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.new-key .key-text {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+  user-select: all;
+}

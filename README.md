@@ -72,6 +72,7 @@ App web (PWA) para que una persona mayor vea **mensajes, recordatorios y tarjeta
 
 1. Abrí <https://mamata.live/admin/>.
 2. Elegí cómo firmar:
+   - **Generar una clave nueva** (la primera vez): el panel crea una nsec para Mamata y te la muestra una sola vez. **Guardala en tu gestor de contraseñas** antes de entrar.
    - **Pegar la nsec** (`nsec1…`): queda guardada solo en ese navegador.
    - **Usar extensión de Nostr** (nos2x u otra con soporte de NIP-44): la nsec queda en la extensión.
 3. La primera vez completá el nombre de quien usa la app y el tuyo.
