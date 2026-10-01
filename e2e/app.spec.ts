@@ -106,13 +106,14 @@ test.describe('panel admin', () => {
       calls.push(`${request.method()} ${path}`)
       const json = (body: unknown, status = 200) =>
         route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
-      if (request.method() === 'GET' && path === '/git/ref/heads/main') return json({ object: { sha: 'c0' } })
-      if (request.method() === 'GET' && path === '/contents/public/data/data.enc') return route.fulfill({ body: seedData })
+      if (request.method() === 'GET' && path === '/git/ref/heads/data') return json({ object: { sha: 'c0' } })
+      if (request.method() === 'GET' && path === '/contents/data.enc') return route.fulfill({ body: seedData })
       if (request.method() === 'GET' && path === '/git/commits/c0') return json({ tree: { sha: 't0' } })
       if (request.method() === 'POST' && path === '/git/blobs') return json({ sha: 'b1' }, 201)
       if (request.method() === 'POST' && path === '/git/trees') return json({ sha: 't1' }, 201)
       if (request.method() === 'POST' && path === '/git/commits') return json({ sha: 'c1' }, 201)
-      if (request.method() === 'PATCH' && path === '/git/refs/heads/main') return json({ object: { sha: 'c1' } })
+      if (request.method() === 'PATCH' && path === '/git/refs/heads/data') return json({ object: { sha: 'c1' } })
+      if (request.method() === 'POST' && path === '/dispatches') return route.fulfill({ status: 204 })
       return json({ message: 'Not Found' }, 404)
     })
 
@@ -131,6 +132,8 @@ test.describe('panel admin', () => {
     await page.getByRole('button', { name: 'Publicar cambios' }).click()
 
     await expect(page.getByText('Todo publicado.')).toBeVisible()
-    expect(calls.filter((c) => c.startsWith('PATCH'))).toEqual(['PATCH /git/refs/heads/main'])
+    // Escribe solo en la rama de datos y pide el despliegue.
+    expect(calls.filter((c) => c.startsWith('PATCH'))).toEqual(['PATCH /git/refs/heads/data'])
+    expect(calls).toContain('POST /dispatches')
   })
 })

@@ -1,10 +1,14 @@
 # Build y publicación en GitHub Pages (mamata.live).
-# Corre en cada push a main, incluidos los commits que hace el panel admin al publicar.
+# El código sale siempre de main. El contenido cifrado sale de la rama `data`, donde
+# publica el panel admin; el panel avisa con un repository_dispatch (un push a `data`
+# no dispara workflows porque esa rama no tiene ninguno).
 name: Publicar en GitHub Pages
 
 on:
   push:
     branches: [main]
+  repository_dispatch:
+    types: [contenido-publicado]
   workflow_dispatch:
 
 # Por defecto nada; cada job pide solo lo que usa.
@@ -22,6 +26,35 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: ¿Ya hay contenido publicado?
+        id: datos
+        run: |
+          if git ls-remote --exit-code --heads origin data > /dev/null; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.datos.outputs.existe == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: data
+          path: .contenido
+          persist-credentials: false
+      # Solo se copian archivos cifrados con nombre válido. Cualquier otra cosa en la rama
+      # `data` (por ejemplo un .html) se ignora: no puede terminar servida en mamata.live.
+      - name: Copiar el contenido cifrado
+        if: steps.datos.outputs.existe == 'true'
+        run: |
+          mkdir -p public/data/img
+          if [ -f .contenido/data.enc ]; then cp .contenido/data.enc public/data/; fi
+          if [ -d .contenido/img ]; then
+            find .contenido/img -maxdepth 1 -type f -regextype posix-extended \
+              -regex '.*/[A-Za-z0-9_-]{1,64}\.enc' -exec cp {} public/data/img/ \;
+          fi
+          rm -rf .contenido
       - uses: actions/setup-node@v7
         with:
           node-version: 24

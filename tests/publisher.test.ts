@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { FileChange } from '../src/admin/github.ts'
 import { DATA_FILE, imageFile, openContent, publish, rotateKey, type Repo } from '../src/admin/publisher.ts'
 import {
@@ -17,39 +17,52 @@ import { sampleContent } from './fixtures.ts'
 
 const NOW = '2026-10-01T15:00:00.000Z'
 
-// Repo en memoria: cada commit es una foto completa de los archivos.
-function memoryRepo(initial: Record<string, Bytes> = {}) {
-  const commits = new Map<string, Map<string, Bytes>>([['c0', new Map(Object.entries(initial))]])
-  let head = 'c0'
+// Repo en memoria: cada commit es una foto completa de los archivos de la rama.
+function memoryRepo(initial: Record<string, Bytes> | null = {}) {
+  const commits = new Map<string, Map<string, Bytes>>()
+  let head: string | null = null
+  if (initial) {
+    commits.set('c0', new Map(Object.entries(initial)))
+    head = 'c0'
+  }
+  const requestDeploy = vi.fn(async () => undefined)
   const repo: Repo = {
     headCommit: async () => head,
     readFile: async (path, ref) => commits.get(ref)?.get(path) ?? null,
     listFiles: async (dir, ref) =>
       [...(commits.get(ref)?.keys() ?? [])].filter((p) => p.startsWith(`${dir}/`)).map((p) => p.slice(dir.length + 1)),
-    commitFiles: async (base: string, files: FileChange[]) => {
-      const next = new Map(commits.get(base))
+    commitFiles: async (base: string | null, files: FileChange[]) => {
+      const next = new Map(base ? commits.get(base) : [])
       for (const file of files) {
         if (file.bytes) next.set(file.path, file.bytes)
         // Como GitHub: borrar algo que no existe hace fallar el commit.
         else if (!next.delete(file.path)) throw new Error(`no existe ${file.path}`)
       }
-      head = `c${commits.size}`
+      head = `c${commits.size + 1}`
       commits.set(head, next)
       return head
     },
+    requestDeploy,
   }
-  return { repo, files: () => commits.get(head) ?? new Map<string, Bytes>() }
+  return { repo, requestDeploy, files: () => (head ? commits.get(head) : undefined) ?? new Map<string, Bytes>() }
 }
 
+describe('paths on the data branch', () => {
+  it('stores content at the root of the branch', () => {
+    expect(DATA_FILE).toBe('data.enc')
+    expect(imageFile('abc')).toBe('img/abc.enc')
+  })
+})
+
 describe('openContent', () => {
-  it('starts an empty document when nothing was published yet', async () => {
+  it('starts an empty document when the data branch does not exist yet', async () => {
     const key = await importKey(await generateKey())
-    const { repo } = memoryRepo()
+    const { repo } = memoryRepo(null)
 
     const opened = await openContent(repo, key, { userName: 'Marta', adminName: 'Fer' })
 
     expect(opened.isNew).toBe(true)
-    expect(opened.baseCommit).toBe('c0')
+    expect(opened.baseCommit).toBeNull()
     expect(opened.content).toMatchObject({ userName: 'Marta', adminName: 'Fer', messages: [] })
   })
 
@@ -78,12 +91,33 @@ describe('publish', () => {
     const { repo, files } = memoryRepo()
     const images = new Map([['img1', new Uint8Array([9, 9])]])
 
-    const commit = await publish(repo, key, 'c0', sampleContent(), images, NOW)
+    const result = await publish(repo, key, 'c0', sampleContent(), images, NOW)
 
-    expect(commit).toBe('c1')
+    expect(result).toEqual({ commit: 'c2', deployRequested: true })
     const stored = await decryptJson(key, files().get(DATA_FILE)!, DATA_AAD)
     expect(stored).toMatchObject({ updatedAt: NOW, userName: 'Marta' })
     expect(Array.from(await decryptBytes(key, files().get(imageFile('img1'))!, imageAad('img1')))).toEqual([9, 9])
+  })
+
+  it('creates the data branch on the first publication and asks to deploy', async () => {
+    const key = await importKey(await generateKey())
+    const { repo, files, requestDeploy } = memoryRepo(null)
+
+    const result = await publish(repo, key, null, sampleContent(), new Map(), NOW)
+
+    expect(result.deployRequested).toBe(true)
+    expect(files().has(DATA_FILE)).toBe(true)
+    expect(requestDeploy).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the commit when the deploy request fails', async () => {
+    const key = await importKey(await generateKey())
+    const { repo, requestDeploy } = memoryRepo()
+    requestDeploy.mockRejectedValueOnce(new Error('sin permiso'))
+
+    const result = await publish(repo, key, 'c0', sampleContent(), new Map(), NOW)
+
+    expect(result).toEqual({ commit: 'c2', deployRequested: false })
   })
 
   it('skips new images that are no longer used', async () => {
@@ -106,7 +140,7 @@ describe('rotateKey', () => {
       [imageFile('img1')]: await encryptBytes(oldKey, new Uint8Array([1]), imageAad('img1')),
       [imageFile('img2')]: await encryptBytes(oldKey, new Uint8Array([2]), imageAad('img2')),
       [imageFile('vieja')]: await encryptBytes(oldKey, new Uint8Array([3]), imageAad('vieja')),
-      'public/data/img/.gitkeep': new Uint8Array(),
+      'img/.gitkeep': new Uint8Array(),
     })
 
     const rotated = await rotateKey(repo, oldKey, 'c0', sampleContent(), new Map(), NOW)
@@ -116,7 +150,8 @@ describe('rotateKey', () => {
     expect(await decryptJson(newKey, files().get(DATA_FILE)!, DATA_AAD)).toMatchObject({ updatedAt: NOW })
     expect(Array.from(await decryptBytes(newKey, files().get(imageFile('img2'))!, imageAad('img2')))).toEqual([2])
     expect(files().has(imageFile('vieja'))).toBe(false)
-    expect(files().has('public/data/img/.gitkeep')).toBe(true)
+    expect(files().has('img/.gitkeep')).toBe(true)
+    expect(rotated.deployRequested).toBe(true)
     await expect(decryptJson(oldKey, files().get(DATA_FILE)!, DATA_AAD)).rejects.toBeInstanceOf(DecryptError)
   })
 

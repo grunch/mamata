@@ -14,16 +14,33 @@ import { emptyContent, parseContent, type Content } from '../shared/model.ts'
 import { referencedImageIds } from './draft.ts'
 import type { FileChange, GitHubRepo } from './github.ts'
 
-export const DATA_FILE = 'public/data/data.enc'
-export const IMAGE_DIR = 'public/data/img'
+// Rutas en la rama de datos (no en main). El workflow las copia a public/data/ al publicar.
+export const DATA_FILE = 'data.enc'
+export const IMAGE_DIR = 'img'
 export const imageFile = (id: string): string => `${IMAGE_DIR}/${id}.enc`
 
-export type Repo = Pick<GitHubRepo, 'headCommit' | 'readFile' | 'listFiles' | 'commitFiles'>
+export type Repo = Pick<GitHubRepo, 'headCommit' | 'readFile' | 'listFiles' | 'commitFiles' | 'requestDeploy'>
 
 export interface OpenedContent {
   content: Content
-  baseCommit: string
+  // null: la rama de datos todavía no existe.
+  baseCommit: string | null
   isNew: boolean
+}
+
+export interface Published {
+  commit: string
+  // false si el commit quedó pero GitHub no aceptó arrancar el despliegue.
+  deployRequested: boolean
+}
+
+async function commitAndDeploy(repo: Repo, base: string | null, files: FileChange[], message: string): Promise<Published> {
+  const commit = await repo.commitFiles(base, files, message)
+  const deployRequested = await repo.requestDeploy().then(
+    () => true,
+    () => false,
+  )
+  return { commit, deployRequested }
 }
 
 export async function openContent(
@@ -32,7 +49,7 @@ export async function openContent(
   names: { userName: string; adminName: string },
 ): Promise<OpenedContent> {
   const baseCommit = await repo.headCommit()
-  const sealed = await repo.readFile(DATA_FILE, baseCommit)
+  const sealed = baseCommit ? await repo.readFile(DATA_FILE, baseCommit) : null
   if (!sealed) return { content: emptyContent(names.userName, names.adminName), baseCommit, isNew: true }
   const content = parseContent(await decryptJson(key, sealed, DATA_AAD))
   return { content, baseCommit, isNew: false }
@@ -47,29 +64,28 @@ async function contentFile(key: CryptoKey, content: Content, now: string): Promi
 export async function publish(
   repo: Repo,
   key: CryptoKey,
-  baseCommit: string,
+  baseCommit: string | null,
   content: Content,
   newImages: Map<string, Bytes>,
   now: string,
-): Promise<string> {
+): Promise<Published> {
   const used = referencedImageIds(content)
   const files = [await contentFile(key, content, now)]
   for (const [id, plain] of newImages) {
     if (used.has(id)) files.push({ path: imageFile(id), bytes: await encryptBytes(key, plain, imageAad(id)) })
   }
-  return repo.commitFiles(baseCommit, files, 'Publicar cambios desde el panel')
+  return commitAndDeploy(repo, baseCommit, files, 'Publicar cambios desde el panel')
 }
 
-export interface RotatedKey {
+export interface RotatedKey extends Published {
   encodedKey: string
-  commit: string
 }
 
 // Genera una clave nueva y vuelve a cifrar todo. Las imágenes que ya no se usan se borran.
 export async function rotateKey(
   repo: Repo,
   oldKey: CryptoKey,
-  baseCommit: string,
+  baseCommit: string | null,
   content: Content,
   newImages: Map<string, Bytes>,
   now: string,
@@ -81,20 +97,20 @@ export async function rotateKey(
 
   for (const id of used) {
     let plain = newImages.get(id)
-    if (!plain) {
+    if (!plain && baseCommit) {
       const sealed = await repo.readFile(imageFile(id), baseCommit)
       if (!sealed) continue
       plain = await decryptBytes(oldKey, sealed, imageAad(id))
     }
-    files.push({ path: imageFile(id), bytes: await encryptBytes(key, plain, imageAad(id)) })
+    if (plain) files.push({ path: imageFile(id), bytes: await encryptBytes(key, plain, imageAad(id)) })
   }
 
-  const existing = await repo.listFiles(IMAGE_DIR, baseCommit)
+  const existing = baseCommit ? await repo.listFiles(IMAGE_DIR, baseCommit) : []
   for (const name of existing.filter((n) => n.endsWith('.enc'))) {
     const id = name.replace(/\.enc$/, '')
     if (!used.has(id)) files.push({ path: imageFile(id), bytes: null })
   }
 
-  const commit = await repo.commitFiles(baseCommit, files, 'Cambiar la clave y volver a cifrar el contenido')
-  return { encodedKey, commit }
+  const published = await commitAndDeploy(repo, baseCommit, files, 'Cambiar la clave y volver a cifrar el contenido')
+  return { ...published, encodedKey }
 }

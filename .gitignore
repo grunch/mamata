@@ -6,3 +6,5 @@ playwright-report/
 .env*
 *.local
 seed-out/
+# El contenido publicado vive en la rama `data`; el workflow lo copia acá al desplegar.
+public/data/

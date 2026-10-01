@@ -58,6 +58,58 @@ describe('GitHubRepo', () => {
     expect(await repo.headCommit()).toBe('c1')
   })
 
+  it('returns null when the branch does not exist yet', async () => {
+    const { repo } = fakeApi([])
+
+    expect(await repo.headCommit()).toBeNull()
+  })
+
+  it('creates the branch with a first commit when there is no base', async () => {
+    const { repo, calls } = fakeApi([
+      when('POST', '/git/blobs', () => json({ sha: 'b1' }, 201)),
+      when('POST', '/git/trees', () => json({ sha: 't1' }, 201)),
+      when('POST', '/git/commits', () => json({ sha: 'c1' }, 201)),
+      when('POST', '/git/refs', () => json({ ref: 'refs/heads/main' }, 201)),
+    ])
+
+    const sha = await repo.commitFiles(null, [{ path: 'data.enc', bytes: new Uint8Array([1]) }], 'Primera publicación')
+
+    expect(sha).toBe('c1')
+    expect(calls.some((c) => c.path.startsWith('/git/commits/'))).toBe(false)
+    expect(calls.find((c) => c.path === '/git/trees')?.body).toEqual({
+      tree: [{ path: 'data.enc', mode: '100644', type: 'blob', sha: 'b1' }],
+    })
+    expect(calls.find((c) => c.path === '/git/commits')?.body).toMatchObject({ parents: [] })
+    expect(calls.find((c) => c.path === '/git/refs')?.body).toEqual({ ref: 'refs/heads/main', sha: 'c1' })
+  })
+
+  it('raises ConflictError when someone else created the branch first', async () => {
+    const { repo } = fakeApi([
+      when('POST', '/git/blobs', () => json({ sha: 'b1' }, 201)),
+      when('POST', '/git/trees', () => json({ sha: 't1' }, 201)),
+      when('POST', '/git/commits', () => json({ sha: 'c1' }, 201)),
+      when('POST', '/git/refs', () => json({ message: 'Reference already exists' }, 422)),
+    ])
+
+    await expect(repo.commitFiles(null, [{ path: 'data.enc', bytes: new Uint8Array([1]) }], 'x')).rejects.toBeInstanceOf(
+      ConflictError,
+    )
+  })
+
+  it('asks GitHub Actions to deploy with a repository dispatch', async () => {
+    const { repo, calls } = fakeApi([when('POST', '/dispatches', () => new Response(null, { status: 204 }))])
+
+    await repo.requestDeploy()
+
+    expect(calls[0]?.body).toEqual({ event_type: 'contenido-publicado' })
+  })
+
+  it('reports a failed deploy request', async () => {
+    const { repo } = fakeApi([when('POST', '/dispatches', () => json({ message: 'nope' }, 422))])
+
+    await expect(repo.requestDeploy()).rejects.toMatchObject({ status: 422 })
+  })
+
   it('reads a raw file at a commit', async () => {
     const { repo, calls } = fakeApi([
       when('GET', '/contents/public/data/data.enc?ref=c1', () => new Response(new Uint8Array([1, 2, 3]))),
@@ -79,6 +131,14 @@ describe('GitHubRepo', () => {
     const { repo } = fakeApi([() => new Response('bad', { status: 401 })])
 
     await expect(repo.headCommit()).rejects.toBeInstanceOf(AuthError)
+  })
+
+  it('keeps what GitHub said when it rejects the token', async () => {
+    const { repo } = fakeApi([() => json({ message: 'Resource not accessible by personal access token' }, 403)])
+
+    const error = await repo.headCommit().catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ status: 403, detail: 'Resource not accessible by personal access token' })
   })
 
   it('does not blame the token when GitHub is rate limiting', async () => {

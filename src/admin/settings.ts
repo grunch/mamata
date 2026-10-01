@@ -2,7 +2,8 @@
 // Nunca se mandan a otro lado que no sea la API de GitHub (el token) y nunca al repo.
 
 export const SITE_URL = 'https://mamata.live/'
-export const REPO = { owner: 'grunch', repo: 'mamata', branch: 'main' } as const
+// El panel solo escribe en la rama `data`; `main` (el código) está protegida.
+export const REPO = { owner: 'grunch', repo: 'mamata', branch: 'data' } as const
 
 const STORAGE_KEY = 'mamata:admin'
 const KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/
