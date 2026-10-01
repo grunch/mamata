@@ -1,4 +1,4 @@
-// Imágenes cifradas y lectura en voz alta.
+// Imágenes cifradas.
 import type { Bytes } from '../shared/crypto.ts'
 import type { AppContext } from './context.ts'
 import { h } from './ui.ts'
@@ -21,21 +21,4 @@ export function asyncImage(ctx: AppContext, id: string, alt: string, className =
     img.hidden = false
   })
   return img
-}
-
-export function canSpeak(): boolean {
-  return typeof window !== 'undefined' && 'speechSynthesis' in window
-}
-
-const SPEECH_RATE = 0.9
-
-export function speak(text: string): void {
-  if (!canSpeak()) return
-  speechSynthesis.cancel()
-  const utterance = new SpeechSynthesisUtterance(text)
-  utterance.lang = 'es-AR'
-  utterance.rate = SPEECH_RATE
-  const voice = speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith('es'))
-  if (voice) utterance.voice = voice
-  speechSynthesis.speak(utterance)
 }

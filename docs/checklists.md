@@ -27,7 +27,8 @@
 ### Contenido
 - [ ] Publicar un mensaje desde el panel. A los 1–2 minutos, al volver a la app, aparece destacado arriba.
 - [ ] "Entendido" lo marca como leído y no lo borra: sigue en "Mensajes anteriores".
-- [ ] "Leer en voz alta" lo lee en español.
+- [ ] "Leer en voz alta" lo lee con voz en español (prueba: un mensaje que diga "hola" no tiene que sonar en inglés).
+- [ ] Si el botón "Leer en voz alta" no aparece, el teléfono no tiene voz en español: Ajustes → Sistema → Idiomas → Salida de texto a voz → motor de Google → Instalar datos de voz → Español. Después reabrir la app.
 - [ ] Un recordatorio de hoy aparece en el inicio y en "Hoy". "Ya lo hice" lo marca y sigue visible.
 - [ ] Un recordatorio semanal aparece en "Próximos" con su próxima fecha.
 
