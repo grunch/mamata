@@ -154,7 +154,13 @@ export class GitHubRepo {
           method: 'POST',
           body: JSON.stringify({ ref: `refs/heads/${this.config.branch}`, sha: commit.sha }),
         })
-    if (update.status === 422 || update.status === 409) throw new ConflictError()
+    if (update.status === 409) throw new ConflictError()
+    if (update.status === 422) {
+      // 422 también es "rama protegida" u otra regla: solo es conflicto si la rama se movió.
+      const detail = await githubMessage(update)
+      if (/fast forward|already exists/i.test(detail)) throw new ConflictError()
+      throw new GitHubError(422, `GitHub rechazó la publicación: ${detail}`)
+    }
     if (!update.ok) throw new GitHubError(update.status, 'No se pudo actualizar la rama')
     return commit.sha
   }

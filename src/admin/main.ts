@@ -6,7 +6,7 @@ import { DecryptError, decryptBytes, imageAad, importKey } from '../shared/crypt
 import { ContentError } from '../shared/model.ts'
 import { SECTIONS, isDirty, type AdminContext, type AdminSession, type Section } from './context.ts'
 import { newId } from './draft.ts'
-import { AuthError, ConflictError, GitHubRepo } from './github.ts'
+import { AuthError, ConflictError, GitHubError, GitHubRepo } from './github.ts'
 import { imageFile, openContent, publish, rotateKey, type Published } from './publisher.ts'
 import { cardsSection } from './screens/cards.ts'
 import { linkSection } from './screens/link.ts'
@@ -47,6 +47,7 @@ function explain(error: unknown): string {
   if (error instanceof DecryptError) return 'La clave no corresponde al contenido publicado.'
   if (error instanceof ContentError) return `El contenido publicado tiene un problema: ${error.message}`
   if (error instanceof ConflictError) return error.message
+  if (error instanceof GitHubError && error.status === 422) return error.message
   return 'No se pudo conectar con GitHub. Revisá la conexión y probá de nuevo.'
 }
 

@@ -201,6 +201,24 @@ describe('GitHubRepo', () => {
     ).rejects.toBeInstanceOf(ConflictError)
   })
 
+  it('does not call a protected-branch rejection a conflict', async () => {
+    const { repo } = fakeApi([
+      when('GET', '/git/commits/c1', () => json({ tree: { sha: 't1' } })),
+      when('POST', '/git/blobs', () => json({ sha: 'b' }, 201)),
+      when('POST', '/git/trees', () => json({ sha: 't2' }, 201)),
+      when('POST', '/git/commits', () => json({ sha: 'c2' }, 201)),
+      when('PATCH', '/git/refs/heads/main', () => json({ message: 'Repository rule violations found' }, 422)),
+    ])
+
+    const error = await repo
+      .commitFiles('c1', [{ path: 'data.enc', bytes: new Uint8Array([1]) }], 'x')
+      .catch((e: unknown) => e)
+
+    expect(error).not.toBeInstanceOf(ConflictError)
+    expect(error).toMatchObject({ status: 422 })
+    expect(String(error)).toContain('Repository rule violations found')
+  })
+
   it('lists file names in a folder', async () => {
     const { repo } = fakeApi([
       when('GET', '/contents/public/data/img?ref=c1', () => json([{ name: 'a.enc', type: 'file' }, { name: 'sub', type: 'dir' }])),
