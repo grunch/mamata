@@ -1,7 +1,7 @@
 // Pantallas y avisos de estado: sin link, sin contenido, sin internet, bienvenida.
 // Lenguaje simple: nunca "error", "caché", "sincronizar" ni "clave".
 import type { AppState } from '../context.ts'
-import { bigButton, h, screen } from '../ui.ts'
+import { bigButton, greeting, h, screen } from '../ui.ts'
 
 export function noLinkScreen(): HTMLElement {
   return screen('¡Hola!', [h('p', { class: 'body', text: 'Para ver tus cosas, pedile el link a tu familiar.' })], { showHome: false })
@@ -58,7 +58,7 @@ export function welcomeScreen(state: AppState, install: InstallPrompt | null, on
       ]
 
   return screen(
-    `¡Hola, ${userName}!`,
+    greeting(userName),
     [
       h('p', { class: 'body', text: `Acá vas a ver los mensajes, recordatorios y tarjetas de regalo que te cargue ${adminName}.` }),
       h('section', { attrs: { 'aria-labelledby': 'instalar' } }, [

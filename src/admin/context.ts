@@ -3,7 +3,7 @@ import type { Bytes } from '../shared/crypto.ts'
 import type { Content } from '../shared/model.ts'
 import type { Device } from './devices.ts'
 
-export type Section = 'mensajes' | 'recordatorios' | 'tarjetas' | 'vincular' | 'papelera'
+export type Section = 'mensajes' | 'recordatorios' | 'tarjetas' | 'vincular' | 'papelera' | 'ajustes'
 
 export const SECTIONS: { id: Section; icon: string; label: string }[] = [
   { id: 'mensajes', icon: '💌', label: 'Mensajes' },
@@ -11,6 +11,7 @@ export const SECTIONS: { id: Section; icon: string; label: string }[] = [
   { id: 'tarjetas', icon: '🎁', label: 'Tarjetas' },
   { id: 'vincular', icon: '📱', label: 'Vincular teléfono' },
   { id: 'papelera', icon: '🗑️', label: 'Papelera' },
+  { id: 'ajustes', icon: '⚙️', label: 'Ajustes' },
 ]
 
 export interface AdminSession {

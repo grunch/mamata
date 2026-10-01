@@ -47,6 +47,11 @@ export function homeLink(): HTMLAnchorElement {
   return bigLink('🏠', 'Volver al inicio', '#/', 'secondary')
 }
 
+// "¡Hola, Marta!", o solo "¡Hola!" si el admin todavía no cargó el nombre.
+export function greeting(name: string): string {
+  return name.trim() ? `¡Hola, ${name.trim()}!` : '¡Hola!'
+}
+
 // Pantalla estándar: título (recibe el foco al navegar) + contenido + "Volver al inicio".
 export function screen(title: string, children: Child[], options: { showHome?: boolean } = {}): HTMLElement {
   const { showHome = true } = options

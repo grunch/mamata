@@ -81,6 +81,17 @@ describe('changedEntries', () => {
     expect(entries.find((e) => e.d === 'r1')?.value).toMatchObject({ deletedAt: '2026-10-01T10:00:00.000Z' })
   })
 
+  it('always includes the names on the first publication, even if they did not change', () => {
+    const doc = sampleContent()
+    const edited = { ...doc, messages: [{ ...doc.messages[0]!, title: 'Nuevo' }, doc.messages[1]!] }
+
+    const first = changedEntries(doc, edited, new Map(), { isNew: true })
+    const later = changedEntries(doc, edited, new Map(), { isNew: false })
+
+    expect(first.map((e) => e.d).sort()).toEqual(['m1', 'perfil'])
+    expect(later.map((e) => e.d)).toEqual(['m1'])
+  })
+
   it('returns nothing when nothing changed', () => {
     expect(changedEntries(sampleContent(), sampleContent(), new Map())).toEqual([])
   })

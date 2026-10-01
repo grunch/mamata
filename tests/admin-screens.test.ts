@@ -7,6 +7,7 @@ import type { AdminContext, AdminSession } from '../src/admin/context.ts'
 import type { Device } from '../src/admin/devices.ts'
 import { cardsSection } from '../src/admin/screens/cards.ts'
 import { linkSection } from '../src/admin/screens/link.ts'
+import { namesSection } from '../src/admin/screens/names.ts'
 import { messagesSection } from '../src/admin/screens/messages.ts'
 import { remindersSection } from '../src/admin/screens/reminders.ts'
 import { setupScreen } from '../src/admin/screens/setup.ts'
@@ -318,6 +319,43 @@ describe('link section', () => {
   })
 })
 
+describe('names section', () => {
+  it('shows the current names and saves new ones', () => {
+    const ctx = makeCtx()
+    const el = mount(namesSection(ctx))
+
+    expect(input(el, 'Nombre de quien usa la app').value).toBe('Marta')
+    expect(input(el, 'Tu nombre').value).toBe('Fer')
+    input(el, 'Nombre de quien usa la app').value = ' Mamá '
+    input(el, 'Tu nombre').value = 'Fernando'
+    el.querySelector('form')!.requestSubmit()
+
+    expect(ctx.session.content).toMatchObject({ userName: 'Mamá', adminName: 'Fernando' })
+    expect(ctx.toast).toHaveBeenCalled()
+  })
+
+  it('asks to fill them in when they are empty', () => {
+    const ctx = makeCtx({ ...sampleContent(), userName: '', adminName: '' })
+    const el = mount(namesSection(ctx))
+
+    expect(text(el)).toContain('Completá los nombres')
+    el.querySelector('form')!.requestSubmit()
+
+    expect(text(el.querySelector('.error')!)).toContain('Falta el nombre de quien usa la app')
+    expect(ctx.edit).not.toHaveBeenCalled()
+  })
+
+  it('uses "tu familiar" when your name is left empty', () => {
+    const ctx = makeCtx({ ...sampleContent(), userName: '', adminName: '' })
+    const el = mount(namesSection(ctx))
+
+    input(el, 'Nombre de quien usa la app').value = 'Marta'
+    el.querySelector('form')!.requestSubmit()
+
+    expect(ctx.session.content).toMatchObject({ userName: 'Marta', adminName: 'tu familiar' })
+  })
+})
+
 describe('setup screen', () => {
   it('requires a valid nsec', async () => {
     const onSubmit = vi.fn(async () => null)
@@ -331,20 +369,17 @@ describe('setup screen', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('enters with the nsec and the names for a first publication', async () => {
+  it('enters with the nsec only (the names are set inside the panel)', async () => {
     const onSubmit = vi.fn(async () => 'No pude conectar con los relays')
     const el = mount(setupScreen(onSubmit))
     const nsec = nsecEncode(generateSecretKey())
 
     input(el, 'Clave privada').value = ` ${nsec} `
-    input(el, 'Nombre de quien usa la app').value = 'Marta'
     el.querySelector('form')!.requestSubmit()
     await flush()
 
-    expect(onSubmit).toHaveBeenCalledWith({
-      setting: { mode: 'nsec', nsec },
-      names: { userName: 'Marta', adminName: 'tu familiar' },
-    })
+    expect(text(el)).not.toContain('Nombre de quien usa la app')
+    expect(onSubmit).toHaveBeenCalledWith({ setting: { mode: 'nsec', nsec } })
     expect(text(el.querySelector('.error')!)).toContain('No pude conectar')
   })
 
@@ -379,6 +414,6 @@ describe('setup screen', () => {
     button(el, 'Usar extensión').click()
     await flush()
 
-    expect(onSubmit).toHaveBeenCalledWith({ setting: { mode: 'nip07' }, names: { userName: 'Marta', adminName: 'tu familiar' } })
+    expect(onSubmit).toHaveBeenCalledWith({ setting: { mode: 'nip07' } })
   })
 })

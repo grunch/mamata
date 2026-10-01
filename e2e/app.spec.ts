@@ -213,9 +213,17 @@ test.describe('panel admin', () => {
 
     await page.goto('/admin/')
     await page.getByLabel('Clave privada (nsec)').fill(nsecEncode(adminSecret))
-    await page.getByLabel('Nombre de quien usa la app').fill('Marta')
     await page.getByRole('button', { name: 'Entrar con la nsec' }).click()
 
+    // Sin nombres todavía: abre en Ajustes para cargarlos.
+    await expect(page.getByText('Completá los nombres')).toBeVisible()
+    await page.getByLabel('Nombre de quien usa la app').fill('Marta')
+    await page.getByLabel('Tu nombre (así te nombra la app)').fill('Fer')
+    await page.getByRole('button', { name: 'Guardar nombres' }).click()
+    await expect(page.getByText('Todo publicado.')).toBeVisible()
+    await expect.poll(() => relay.find({ kinds: [KIND.profile], authors: [adminPubkey] }).length).toBe(1)
+
+    await page.getByRole('link', { name: '💌 Mensajes' }).click()
     await page.getByRole('button', { name: '＋ Nuevo mensaje' }).click()
     await page.getByLabel('Título').fill('¡Hola mamá!')
     await page.getByLabel('Texto').fill('Mañana paso a las 5.')
