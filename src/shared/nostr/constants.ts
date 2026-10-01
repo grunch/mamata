@@ -16,7 +16,9 @@ export const KIND = {
 // Lo que ve el teléfono (además de su propia clave de contenido, kind 36011).
 export const ITEM_KINDS = [KIND.message, KIND.reminder, KIND.giftCard, KIND.profile] as const
 
-export const RELAYS = ['wss://relay.mostro.network', 'wss://mostro-p2p.tech', 'wss://relay.shadowbip.com']
+// Probados el 2026-10-01: aceptan los kinds 36000–36012 y reemplazan bien los eventos.
+// (mostro-p2p.tech se descartó: rechaza estos kinds.)
+export const RELAYS = ['wss://relay.mostro.network', 'wss://relay.shadowbip.com', 'wss://nos.lol']
 
 export const BLOSSOM_SERVERS = ['https://blossom.primal.net', 'https://blossom.band']
 

@@ -6,20 +6,16 @@ describe('LocalStore', () => {
     await deleteLocalDatabase()
   })
 
-  it('returns null when no key was saved', async () => {
-    const store = await LocalStore.open()
-
-    expect(await store.getKey()).toBeNull()
-  })
-
-  it('persists the key across openings', async () => {
+  it('keeps the admin and the phone key across openings', async () => {
     const first = await LocalStore.open()
-    await first.setKey('clave-de-prueba')
+    await first.setAdminPubkey('b'.repeat(64))
+    const secret = await first.phoneSecret()
     first.close()
 
     const second = await LocalStore.open()
 
-    expect(await second.getKey()).toBe('clave-de-prueba')
+    expect(await second.getAdminPubkey()).toBe('b'.repeat(64))
+    expect(Array.from(await second.phoneSecret())).toEqual(Array.from(secret))
   })
 
   it('records read messages without duplicates', async () => {
@@ -52,14 +48,34 @@ describe('LocalStore', () => {
     expect(await store.balanceNotes()).toHaveLength(3)
   })
 
-  it('keeps the last good encrypted content', async () => {
+  it('creates the phone key once and keeps it', async () => {
     const store = await LocalStore.open()
-    const sealed = new Uint8Array([1, 2, 3])
 
-    expect(await store.getLastGoodContent()).toBeNull()
-    await store.setLastGoodContent(sealed)
+    const first = await store.phoneSecret()
+    const again = await store.phoneSecret()
 
-    expect(Array.from((await store.getLastGoodContent()) ?? [])).toEqual([1, 2, 3])
+    expect(first).toHaveLength(32)
+    expect(Array.from(again)).toEqual(Array.from(first))
+  })
+
+  it('remembers which admin to trust', async () => {
+    const store = await LocalStore.open()
+
+    expect(await store.getAdminPubkey()).toBeNull()
+    await store.setAdminPubkey('a'.repeat(64))
+
+    expect(await store.getAdminPubkey()).toBe('a'.repeat(64))
+  })
+
+  it('keeps one event per address, replacing the previous one', async () => {
+    const store = await LocalStore.open()
+    const base = { pubkey: 'p', tags: [['d', 'm1']], content: '', sig: 's' }
+
+    await store.saveEvent({ ...base, id: '1', kind: 36000, created_at: 1 })
+    await store.saveEvent({ ...base, id: '2', kind: 36000, created_at: 2 })
+    await store.saveEvent({ ...base, id: '3', kind: 36001, created_at: 1 })
+
+    expect((await store.loadEvents()).map((e) => e.id).sort()).toEqual(['2', '3'])
   })
 
   it('stores simple preferences', async () => {

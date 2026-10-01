@@ -7,14 +7,6 @@ export function noLinkScreen(): HTMLElement {
   return screen('¡Hola!', [h('p', { class: 'body', text: 'Para ver tus cosas, pedile el link a tu familiar.' })], { showHome: false })
 }
 
-export function emptyScreen(): HTMLElement {
-  return screen(
-    '¡Hola!',
-    [h('p', { class: 'body', text: 'Todavía no hay nada para mostrar. Cuando tu familiar cargue información, va a aparecer acá.' })],
-    { showHome: false },
-  )
-}
-
 export function offlineFirstScreen(onRetry: () => void): HTMLElement {
   return screen(
     'Sin internet',
@@ -31,17 +23,22 @@ export function notFoundScreen(message: string): HTMLElement {
 }
 
 export function banners(state: AppState): HTMLElement[] {
-  const admin = state.content.adminName || 'tu familiar'
-  const result: HTMLElement[] = []
-  if (state.offline) {
-    result.push(h('p', { class: 'banner', attrs: { role: 'status' }, text: 'Sin internet. Te muestro la última información guardada.' }))
-  }
-  if (state.outdatedKey) {
-    result.push(
-      h('p', { class: 'banner', attrs: { role: 'status' }, text: `Hay información nueva. Pedile a ${admin} que te mande el link otra vez.` }),
-    )
-  }
-  return result
+  if (!state.offline) return []
+  return [h('p', { class: 'banner', attrs: { role: 'status' }, text: 'Sin internet. Te muestro la última información guardada.' })]
+}
+
+// Teléfono todavía sin habilitar (o al que se le quitó el acceso).
+export function waitingScreen(code: string): HTMLElement {
+  return screen(
+    '¡Hola!',
+    [
+      h('p', { class: 'body', text: 'Esperando que tu familiar te habilite.' }),
+      h('p', { class: 'body', text: 'Mostrale este número:' }),
+      h('p', { class: 'pairing-code', text: code, attrs: { 'aria-label': `Código ${code.split('').join(' ')}` } }),
+      h('p', { class: 'caption', text: 'Cuando te habilite, tus cosas aparecen solas acá.' }),
+    ],
+    { showHome: false },
+  )
 }
 
 export interface InstallPrompt {

@@ -9,6 +9,7 @@ export type Route =
   | { name: 'card-explainer'; id: string }
   | { name: 'card-note'; id: string }
   | { name: 'card-history'; id: string }
+  | { name: 'settings' }
 
 const CARD_SUBPAGES = {
   'ver-saldo': 'card-explainer',
@@ -24,6 +25,7 @@ export function parseRoute(hash: string): Route {
   if (section === 'mensajes' && id && parts.length === 2) return { name: 'message', id }
   if (section === 'recordatorios' && parts.length === 1) return { name: 'reminders' }
   if (section === 'tarjetas' && parts.length === 1) return { name: 'cards' }
+  if (section === 'ajustes' && parts.length === 1) return { name: 'settings' }
   if (section === 'tarjetas' && id && parts.length === 2) return { name: 'card', id }
   if (section === 'tarjetas' && id && sub && sub in CARD_SUBPAGES && parts.length === 3) {
     return { name: CARD_SUBPAGES[sub as keyof typeof CARD_SUBPAGES], id }
@@ -51,5 +53,7 @@ export function routeHref(route: Route): string {
       return `#/tarjetas/${encodeURIComponent(route.id)}/anotar`
     case 'card-history':
       return `#/tarjetas/${encodeURIComponent(route.id)}/historial`
+    case 'settings':
+      return '#/ajustes'
   }
 }

@@ -46,6 +46,7 @@ export function homeScreen(ctx: AppContext): HTMLElement {
         bigLink('⏰', 'Recordatorios', '#/recordatorios'),
         bigLink('🎁', 'Tarjetas de regalo', '#/tarjetas'),
       ]),
+      bigLink('⚙️', 'Ajustes', '#/ajustes', 'quiet'),
     ],
     { showHome: false },
   )

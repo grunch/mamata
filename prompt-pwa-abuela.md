@@ -16,7 +16,7 @@ Actuá como un desarrollador senior frontend con experiencia en PWAs, accesibili
 **Sitio estático + Nostr. No hay backend ni servidor propio.**
 
 - **Frontend**: sitio estático generado con **Vite** (HTML, CSS y TypeScript sin framework pesado), publicado en **GitHub Pages** con una GitHub Action en cada push a `main`, con el dominio propio **`mamata.live`** (`base` de Vite = `/`, `public/CNAME`, HTTPS forzado). Repo: `https://github.com/grunch/mamata` (público); `main` protegida (solo PRs). GitHub Pages sirve **solo el código**: el contenido no pasa por GitHub.
-- **Contenido por Nostr, en tiempo real.** Relays: `wss://relay.mostro.network`, `wss://mostro-p2p.tech`, `wss://relay.shadowbip.com`.
+- **Contenido por Nostr, en tiempo real.** Relays: `wss://relay.mostro.network`, `wss://relay.shadowbip.com`, `wss://nos.lol` (probados: aceptan los kinds 36000–36012).
 - **Claves**:
   - **Admin**: firma todo lo que se publica. En el panel se usa pegando la nsec (guardada solo en ese navegador) **o** con una extensión NIP-07 (nos2x u otras) que soporte `nip44`.
   - **Teléfono**: la app genera su propio par de claves al abrirse por primera vez y lo guarda en IndexedDB. Nunca sale del teléfono. Se puede ver en ⚙️ Ajustes (npub siempre; nsec solo detrás de un aviso).

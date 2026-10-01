@@ -1,12 +1,15 @@
 // Lo que el usuario hace en su teléfono (IndexedDB). Solo se agrega: nada se borra
 // cuando el admin publica contenido nuevo.
+import type { Event } from 'nostr-tools'
+import { generateSecretKey } from 'nostr-tools/pure'
 import type { BalanceNote } from '../shared/balance.ts'
-import type { Bytes } from '../shared/crypto.ts'
+import { dTag } from '../shared/nostr/events.ts'
 
 const DB_NAME = 'mamata'
-const DB_VERSION = 1
-const KEY_ENTRY = 'contentKey'
-const LAST_GOOD_ENTRY = 'lastGoodContent'
+// v2: identidad Nostr del teléfono y eventos recibidos de los relays.
+const DB_VERSION = 2
+const PHONE_SECRET_ENTRY = 'phoneSecret'
+const ADMIN_ENTRY = 'adminPubkey'
 
 export interface Prefs {
   skipBalanceExplainer: boolean
@@ -24,12 +27,17 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
 
 function openDatabase(): Promise<IDBDatabase> {
   const req = indexedDB.open(DB_NAME, DB_VERSION)
+  // Crea solo lo que falta: al pasar de v1 a v2 no se pierde nada de lo anotado.
   req.onupgradeneeded = () => {
     const db = req.result
-    db.createObjectStore('kv')
-    db.createObjectStore('reads', { keyPath: 'messageId' })
-    db.createObjectStore('done', { keyPath: 'id' })
-    db.createObjectStore('balances', { autoIncrement: true })
+    const create = (name: string, options?: IDBObjectStoreParameters) => {
+      if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, options)
+    }
+    create('kv')
+    create('reads', { keyPath: 'messageId' })
+    create('done', { keyPath: 'id' })
+    create('balances', { autoIncrement: true })
+    create('events')
   }
   return request(req).then((db) => {
     // Si otra pestaña actualiza o borra la base, soltar la conexión para no bloquearla.
@@ -61,23 +69,35 @@ export class LocalStore {
     return this.db.transaction(name, mode).objectStore(name)
   }
 
-  async getKey(): Promise<string | null> {
-    const value: unknown = await request(this.store('kv').get(KEY_ENTRY))
+
+
+
+
+  // Clave Nostr del teléfono: se crea la primera vez y nunca sale de acá.
+  async phoneSecret(): Promise<Uint8Array> {
+    const stored: unknown = await request(this.store('kv').get(PHONE_SECRET_ENTRY))
+    if (stored instanceof ArrayBuffer) return new Uint8Array(stored)
+    const secret = generateSecretKey()
+    await request(this.store('kv', 'readwrite').put(secret.slice().buffer, PHONE_SECRET_ENTRY))
+    return secret
+  }
+
+  async getAdminPubkey(): Promise<string | null> {
+    const value: unknown = await request(this.store('kv').get(ADMIN_ENTRY))
     return typeof value === 'string' ? value : null
   }
 
-  async setKey(key: string): Promise<void> {
-    await request(this.store('kv', 'readwrite').put(key, KEY_ENTRY))
+  async setAdminPubkey(pubkey: string): Promise<void> {
+    await request(this.store('kv', 'readwrite').put(pubkey, ADMIN_ENTRY))
   }
 
-  // Última versión del contenido que se pudo descifrar (sigue cifrada).
-  async getLastGoodContent(): Promise<Bytes | null> {
-    const value: unknown = await request(this.store('kv').get(LAST_GOOD_ENTRY))
-    return value instanceof ArrayBuffer ? new Uint8Array(value) : null
+  // Un evento por dirección (kind, autor, d): guardar reemplaza al anterior.
+  async saveEvent(event: Event): Promise<void> {
+    await request(this.store('events', 'readwrite').put(event, `${event.kind}:${event.pubkey}:${dTag(event)}`))
   }
 
-  async setLastGoodContent(sealed: Bytes): Promise<void> {
-    await request(this.store('kv', 'readwrite').put(sealed.slice().buffer, LAST_GOOD_ENTRY))
+  async loadEvents(): Promise<Event[]> {
+    return (await request(this.store('events').getAll())) as Event[]
   }
 
   async getPref<K extends keyof Prefs>(name: K): Promise<Prefs[K]> {

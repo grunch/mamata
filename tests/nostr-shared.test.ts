@@ -33,7 +33,7 @@ describe('constants', () => {
       adminKey: 36012,
     })
     expect(ITEM_KINDS).toEqual([36000, 36001, 36002, 36003])
-    expect(RELAYS).toEqual(['wss://relay.mostro.network', 'wss://mostro-p2p.tech', 'wss://relay.shadowbip.com'])
+    expect(RELAYS).toEqual(['wss://relay.mostro.network', 'wss://relay.shadowbip.com', 'wss://nos.lol'])
     expect(BLOSSOM_SERVERS).toEqual(['https://blossom.primal.net', 'https://blossom.band'])
   })
 })

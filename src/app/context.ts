@@ -11,8 +11,6 @@ export interface AppState {
   done: Set<string>
   notes: BalanceNote[]
   offline: boolean
-  // El admin cambió la clave: se muestra lo último guardado y se pide el link nuevo.
-  outdatedKey: boolean
 }
 
 export interface AppContext {

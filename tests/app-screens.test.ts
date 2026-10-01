@@ -9,12 +9,13 @@ import { cardScreen, cardsScreen, historyScreen } from '../src/app/screens/giftc
 import { homeScreen } from '../src/app/screens/home.ts'
 import { messageScreen, messagesScreen } from '../src/app/screens/messages.ts'
 import { remindersScreen } from '../src/app/screens/reminders.ts'
+import { settingsScreen } from '../src/app/screens/settings.ts'
 import {
   banners,
-  emptyScreen,
   noLinkScreen,
   notFoundScreen,
   offlineFirstScreen,
+  waitingScreen,
   welcomeScreen,
 } from '../src/app/screens/status.ts'
 import { announce, h, replaceScreen, screen } from '../src/app/ui.ts'
@@ -32,7 +33,6 @@ async function makeCtx(overrides: Partial<AppState> = {}) {
     done: new Set(),
     notes: [],
     offline: false,
-    outdatedKey: false,
     ...overrides,
   }
   const ctx = {
@@ -152,6 +152,12 @@ describe('home screen', () => {
 
     const done = await makeCtx({ done: new Set([LocalStore.doneKey('r1', '2026-10-01')]) })
     expect(text(homeScreen(done))).not.toContain('Para hoy')
+  })
+
+  it('links to the settings at the bottom', async () => {
+    const link = homeScreen(await makeCtx()).querySelector<HTMLAnchorElement>('a[href="#/ajustes"]')
+
+    expect(link?.textContent).toContain('Ajustes')
   })
 
   it('has no highlight when everything was read', async () => {
@@ -417,7 +423,6 @@ describe('balance return', () => {
 describe('status screens', () => {
   it('asks for the link without technical words', () => {
     expect(text(noLinkScreen())).toContain('pedile el link a tu familiar')
-    expect(text(emptyScreen())).toContain('Todavía no hay nada para mostrar')
     expect(text(notFoundScreen('No está'))).toContain('No está')
   })
 
@@ -429,15 +434,19 @@ describe('status screens', () => {
     expect(retry).toHaveBeenCalled()
   })
 
-  it('shows soft banners for offline and outdated link', async () => {
-    const ctx = await makeCtx({ offline: true, outdatedKey: true })
-
-    const shown = banners(ctx.state).map(text)
-
-    expect(shown).toEqual([
+  it('shows a soft banner when offline', async () => {
+    expect(banners((await makeCtx({ offline: true })).state).map(text)).toEqual([
       'Sin internet. Te muestro la última información guardada.',
-      'Hay información nueva. Pedile a Fer que te mande el link otra vez.',
     ])
+    expect(banners((await makeCtx()).state)).toEqual([])
+  })
+
+  it('waits for approval showing the pairing code big', () => {
+    const el = waitingScreen('4821')
+
+    expect(text(el.querySelector('.pairing-code')!)).toBe('4821')
+    expect(text(el)).toContain('Esperando que tu familiar te habilite')
+    expect(text(el)).not.toContain('Volver al inicio')
   })
 
   it('welcomes with install steps or the install button', async () => {
@@ -452,6 +461,33 @@ describe('status screens', () => {
     const prompt = vi.fn(async () => undefined)
     button(welcomeScreen(ctx.state, { prompt }, start), 'Agregar a la pantalla de inicio').click()
     expect(prompt).toHaveBeenCalled()
+  })
+})
+
+describe('settings', () => {
+  const secret = new Uint8Array(32).fill(7)
+
+  it('shows the phone npub and pairing code, and hides the private key behind a warning', () => {
+    const el = settingsScreen(secret)
+    document.body.append(el)
+
+    expect(text(el)).toMatch(/npub1[02-9ac-hj-np-z]{58}/)
+    expect(el.querySelector('.pairing-code')?.textContent).toMatch(/^\d{4}$/)
+    expect(text(el)).not.toContain('nsec1')
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    button(el, 'Mostrar clave privada').click()
+
+    expect(text(el)).toMatch(/nsec1[02-9ac-hj-np-z]{58}/)
+  })
+
+  it('keeps the private key hidden if the user cancels', () => {
+    const el = settingsScreen(secret)
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    button(el, 'Mostrar clave privada').click()
+
+    expect(text(el)).not.toContain('nsec1')
   })
 })
 
