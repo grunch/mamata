@@ -1,0 +1,467 @@
+/* App del usuario: letra grande, contraste alto, botones grandes, sin gestos ocultos. */
+
+:root {
+  --bg: #fffdf8;
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  --muted: #3d3d3d;
+  --primary: #1f3f6e;
+  --primary-text: #ffffff;
+  --secondary-bg: #e8eef7;
+  --secondary-text: #1f3f6e;
+  --border: #6b6b6b;
+  --focus: #b35c00;
+  --ok: #1d5c2e;
+  --warn-bg: #fff1c2;
+  --warn-text: #5c3d00;
+  --error: #9b1c1c;
+
+  --style-normal: #e8eef7;
+  --style-importante: #fde7c8;
+  --style-buena-noticia: #d9f2de;
+  --style-urgente: #fbd5d5;
+
+  --radius: 16px;
+  --gap: 1.25rem;
+  --touch: 64px;
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* 125% = 20px con la configuración por defecto, y crece si el sistema usa letra más grande. */
+html {
+  font-size: 125%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.screen {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem 1rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+h1 {
+  font-size: 1.6rem; /* 32px */
+  line-height: 1.2;
+  margin: 0.5rem 0 0;
+}
+
+h2 {
+  font-size: 1.4rem; /* 28px */
+  line-height: 1.25;
+  margin: 0;
+}
+
+h1:focus {
+  outline: none;
+}
+
+p {
+  margin: 0;
+}
+
+.today {
+  font-size: 1.2rem;
+  color: var(--muted);
+}
+
+.body {
+  font-size: 1rem;
+}
+
+.strong {
+  font-weight: 700;
+}
+
+.caption,
+.row-date,
+.reminder-date {
+  color: var(--muted);
+}
+
+.empty {
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 2px dashed var(--border);
+}
+
+/* --- botones: siempre ícono + texto, al menos 64px de alto --- */
+
+.big-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0.75rem 1.25rem;
+  border-radius: var(--radius);
+  border: 3px solid transparent;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.big-button .icon {
+  font-size: 1.4rem;
+}
+
+.big-button.primary {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.big-button.secondary {
+  background: var(--secondary-bg);
+  color: var(--secondary-text);
+  border-color: var(--secondary-text);
+}
+
+.big-button.quiet {
+  background: var(--surface);
+  color: var(--primary);
+  border-color: var(--border);
+}
+
+:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.actions,
+.main-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.home-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 2px solid var(--border);
+}
+
+.home-nav .big-button {
+  max-width: 38rem;
+  margin: 0 auto;
+}
+
+/* --- listas y tarjetas --- */
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.message-card,
+.balance-box,
+.today-reminders,
+.reminder,
+.history li {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.message-card.highlight {
+  border-width: 4px;
+}
+
+.style-normal {
+  background: var(--style-normal);
+}
+.style-importante {
+  background: var(--style-importante);
+}
+.style-buena-noticia {
+  background: var(--style-buena-noticia);
+}
+.style-urgente {
+  background: var(--style-urgente);
+}
+
+.message-row,
+.card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-height: var(--touch);
+  padding: 1rem 1.25rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card-row {
+  background: var(--surface);
+}
+
+.row-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.badge {
+  align-self: flex-start;
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-text);
+  font-weight: 700;
+}
+
+.kind {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.big-emoji {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.photo,
+.card-photo {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+}
+
+.thumb {
+  width: 100%;
+  max-height: 8rem;
+  object-fit: cover;
+  border-radius: calc(var(--radius) / 2);
+}
+
+.time {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.reminder {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.reminder-icon {
+  font-size: 2rem;
+}
+
+.reminder-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.done {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.amount {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.amount.big {
+  font-size: 2.4rem;
+  line-height: 1.1;
+}
+
+.expiry.warn {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-weight: 700;
+}
+
+.spent {
+  color: var(--muted);
+}
+
+/* --- "¿Cuánto te queda?" --- */
+
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.money-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.money {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--touch);
+  padding: 0.5rem 1rem;
+  font: inherit;
+  border: 3px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.error {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: 1.25rem;
+  border: 3px solid var(--focus);
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--touch);
+}
+
+.check input {
+  width: 32px;
+  height: 32px;
+}
+
+/* --- dibujo de la X de Chrome --- */
+
+.x-drawing {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: #f1f3f4;
+  overflow: hidden;
+}
+
+.x-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 4px solid var(--focus);
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.x-bar {
+  flex: 1;
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.x-arrow {
+  font-weight: 700;
+  color: var(--focus);
+  white-space: nowrap;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* --- avisos --- */
+
+.banner {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-weight: 700;
+  text-align: center;
+}
+
+.toast {
+  position: fixed;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  left: 1rem;
+  right: 1rem;
+  z-index: 10;
+  max-width: 38rem;
+  margin: 0 auto;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  background: var(--ok);
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: aparecer 200ms ease-out;
+  }
+
+  @keyframes aparecer {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
